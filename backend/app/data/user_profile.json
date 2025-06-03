@@ -1,0 +1,33 @@
+{
+  "core_data": {
+    "full_name": "Jane Doe",
+    "email": "john.doe@example.com",
+    "phone": "+1 (555) 123-4567",
+    "linkedin": "linkedin.com/in/johndoe",
+    "job_history": [
+      {
+        "title": "Software Engineer",
+        "company": "Tech Innovators Inc.",
+        "dates": "Jan 2021 - Present",
+        "responsibilities": "Developed scalable backend services, maintained CI/CD pipelines, collaborated with cross-functional teams."
+      }
+    ],
+    "education": [],
+    "skills": [
+      "Nodejs",
+      "Typescript",
+      "React",
+      "MongoDB"
+    ],
+    "certifications": [],
+    "projects": []
+  },
+  "learned_preferences": {
+    "conciseness_level": "high",
+    "action_verb_preference": "normal",
+    "tone": "confident",
+    "preferred_keywords": [
+      "Postgresql"
+    ]
+  }
+}
