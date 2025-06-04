@@ -1,33 +1,103 @@
 {
   "core_data": {
-    "full_name": "Jane Doe",
-    "email": "john.doe@example.com",
-    "phone": "+1 (555) 123-4567",
-    "linkedin": "linkedin.com/in/johndoe",
+    "full_name": "Amy Pyae Phyo Naing",
+    "email": "ampyaephyonaing@gmail.com",
+    "phone": "+65 8876 4959",
+    "linkedin": "linkedin.com/in/amydev-me",
     "job_history": [
       {
-        "title": "Software Engineer",
-        "company": "Tech Innovators Inc.",
-        "dates": "Jan 2021 - Present",
-        "responsibilities": "Developed scalable backend services, maintained CI/CD pipelines, collaborated with cross-functional teams."
+        "title": "Full Stack Engineer (AI)",
+        "company": "OOm Pte Ltd",
+        "location": "Singapore",
+        "dates": "FEB 2025 - Current",
+        "responsibilities": "Built an application like SERanking using Node.js, React, and MongoDB."
+      },
+      {
+        "title": "SOFTWARE ENGINEER",
+        "company": "Fuji SMBE Pte Ltd",
+        "location": "Singapore",
+        "dates": "OCT 2019 - JUNE 2024",
+        "responsibilities": "Developed an end-to-end core configuration ERP system using PHP (Laravel), Node.js, TypeScript, and Vue.js. Managed AWS for deployment and service provisioning. Collaborated with stakeholders to design and implement custom integration systems. Conducted comprehensive code reviews for overseas freelancers, fostering collaborative excellence within the team. Conducted regular research to enhance developer experience and workflow efficiency. Optimized API performance and flow through diagnosis and refactoring. Created a service for CRUD operations in Firestore, bypassing the monolithic architecture. Built automated tools using Node.js and Socket.io. Successfully upgraded the Laravel framework from version 5 to the latest, ensuring seamless deployment and release. Utilized Docker to manage PHP version transitions, facilitating a step-by-step migration from 5 to the latest version via intermediate versions. Efficiently migrated extensive data from old to new systems using Node.js."
+      },
+      {
+        "title": "LEAD WEB DEVELOPER",
+        "company": "L-Future Network Technology (China Based)",
+        "location": "Myanmar",
+        "dates": "SEPT 2018 - AUG 2019",
+        "responsibilities": "Successfully led and developed a Bulk SMS Gateway Service Provider in 3 months from scratch to enterprise, leading to promotion to Lead Web Developer. Successfully led 4 E-commerce web applications and exposed a secure API for mobile applications iOS and Android. Built a highly scalable back-end service capable of handling multiple SMS transactions per second. Gathered and analyzed requirements. Performed performance testing/analyzing. Designed the relational database schema for all applications. Integrated with external third-party SMS Gateway Service Providers. Built an easy-to-use third-party service API with high security for clients. Led, mentored, trained, and supervised senior developers, frontend developers."
+      },
+      {
+        "title": "SOFTWARE DEVELOPER",
+        "company": "Mounts Digital Co Ltd",
+        "location": "Myanmar",
+        "dates": "NOV 2014 - AUG 2018",
+        "responsibilities": "Developed Accounting Software and SME Applications (POS, Pawn Shop, Banking, School Management) using C#, Windows Form & ASP .NET. Implemented Realtime Report Viewer using WCF. Developed SME Web-based and Window Form Applications. Built customized Web and Windows Form applications for end-users."
       }
     ],
-    "education": [],
+    "education": [
+      {
+        "degree": "B.Sc (SOFTWARE ENGINEERING)",
+        "institution": "Your University Name 1",
+        "dates": "JUNE, 2021 - MARCH, 2023",
+        "major": "Software Engineering"
+      },
+      {
+        "degree": "DIPLOMA IN INFORMATION TECHNOLOGY",
+        "institution": "Your College Name 2",
+        "dates": "APRIL, 2020 - FEB, 2021",
+        "major": "IT"
+      },
+      {
+        "degree": "B.A (PHILOSOPHY)",
+        "institution": "Your University Name 3",
+        "dates": "2007 - 2009",
+        "major": "Philosophy"
+      }
+    ],
     "skills": [
       "Nodejs",
       "Typescript",
       "React",
-      "MongoDB"
+      "MongoDB",
+      "Docker",
+      "Kubernetes",
+      "AWS Lambda",
+      "Google Cloud Functions"
     ],
     "certifications": [],
-    "projects": []
+    "projects": [],
+    "years_of_experience": 9
   },
-  "learned_preferences": {
-    "conciseness_level": "high",
-    "action_verb_preference": "normal",
-    "tone": "confident",
-    "preferred_keywords": [
-      "Postgresql"
-    ]
-  }
+  "learned_preferences": [
+    {
+      "id": "pref_1",
+      "rule": "The summary should be no more than 3 concise sentences.",
+      "active": true
+    },
+    {
+      "id": "pref_2",
+      "rule": "Each bullet point in the experience section should begin with a strong action verb, quantify achievements whenever possible, and emphasize leadership roles, microservices architecture, backend optimization, and AWS experience where applicable.",
+      "active": true
+    },
+    {
+      "id": "pref_3",
+      "rule": "Maintain a professional and results-oriented tone throughout the resume.",
+      "active": true
+    },
+    {
+      "id": "pref_4",
+      "rule": "Do not include any mention of C# or ASP.NET in the skills section or work experience descriptions.",
+      "active": true
+    },
+    {
+      "id": "pref_5",
+      "rule": "Highlight experience with microservices architecture, backend system optimization, and AWS cloud deployments.",
+      "active": true
+    },
+    {
+      "id": "pref_6",
+      "rule": "Prioritize and prominently feature projects and responsibilities demonstrating leadership and project management skills.",
+      "active": true
+    }
+  ]
 }
