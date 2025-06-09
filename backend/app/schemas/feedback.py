@@ -1,5 +1,6 @@
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from pydantic import BaseModel
+from .critique import ResumeCritique # <--- Ensure this NEW IMPORT is at the top
 
 class FeedbackItem(BaseModel):
     section: str  # e.g., "summary", "experience", "skills"
@@ -24,3 +25,9 @@ class ResumeContentResponse(BaseModel):
     content: str
     timestamp: str
     feedback_summary: str
+
+    # --- NEW FIELDS FOR AGENTIC FEATURES ---
+    core_data_used: Optional[Dict[str, Any]] = None
+    learned_preferences_used: Optional[List[Dict[str, Any]]] = None
+    target_job_description_used: Optional[str] = None
+    critique: Optional[ResumeCritique] = None  # <--- The critical new field for self-critique

@@ -6,7 +6,7 @@ from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware # Import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from .utils.file_manager import load_json_data, save_json_data
 from .schemas.feedback import ResumeFeedback, ResumeContentResponse
@@ -15,7 +15,8 @@ from .services.feedback_services import  process_feedback_and_update_preferences
 from .core_ai.llm_client import LLMClient
 from .core_ai.prompt_manager import PromptManager
 from .utils.text_processing import clean_llm_output  # For cleaning LLM output
-
+from .schemas.suggestion import GetSuggestionsRequest, SuggestionsResponse, SuggestionItem # <--- Make sure these are imported
+import json
 # Load environment variables
 load_dotenv()
 
@@ -164,3 +165,52 @@ async def submit_feedback(feedback: ResumeFeedback):
         return {"success": True, "message": "Feedback processed and preferences updated."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing feedback: {str(e)}")
+
+@app.post("/get-suggestions/", response_model=SuggestionsResponse)
+async def get_suggestions(request: GetSuggestionsRequest):
+    """
+    Generates proactive suggestions for resume improvement based on user data
+    and an optional target job description.
+    """
+    try:
+        # CORRECTED: Use load_json_data directly as implemented
+        user_profile = load_json_data(USER_PROFILE_FILE)
+        core_data = user_profile.get("core_data", {})
+        learned_preferences = user_profile.get("learned_preferences", [])
+
+        # Generate the prompt for suggestions using the new method
+        suggestions_prompt = prompt_manager.generate_suggestions_prompt(
+            user_core_data=core_data,
+            learned_preferences=learned_preferences,
+            target_job_description=request.target_job_description
+        )
+
+        # Get raw suggestions (JSON string) from the LLM
+        raw_suggestions_json = llm_client.generate_text(suggestions_prompt, temperature=0.6)
+
+        # --- NEW: Clean the raw_suggestions_json to remove markdown code block ---
+        cleaned_suggestions_json = raw_suggestions_json.strip()
+        if cleaned_suggestions_json.startswith("```json"):
+            cleaned_suggestions_json = cleaned_suggestions_json[len("```json"):].strip()
+        if cleaned_suggestions_json.endswith("```"):
+            cleaned_suggestions_json = cleaned_suggestions_json[:-len("```")].strip()
+        # --- END NEW ---
+        # Parse and validate the suggestions
+        try:
+            suggestions_data = json.loads(cleaned_suggestions_json)  # <--- USE CLEANED STRING
+            if not isinstance(suggestions_data, list):
+                raise ValueError("LLM did not return a list of suggestions.")
+            validated_suggestions = [SuggestionItem(**s) for s in suggestions_data]
+        except (json.JSONDecodeError, ValueError, ValidationError) as e:
+            print(f"Error parsing/validating LLM suggestions JSON: {e}")
+            print(f"Raw LLM output for suggestions: {raw_suggestions_json}")
+            raise HTTPException(status_code=500, detail=f"AI returned malformed suggestions: {str(e)}. Raw output: {raw_suggestions_json[:200]}...")
+
+        return SuggestionsResponse(suggestions=validated_suggestions)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"An unexpected error occurred while getting suggestions: {str(e)}")

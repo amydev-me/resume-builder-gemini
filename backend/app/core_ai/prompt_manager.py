@@ -1,4 +1,5 @@
-from typing import Dict, Any, List
+from typing import Dict, Any, List,  Optional
+import json # Ensure json is imported
 
 
 class PromptManager:
@@ -30,12 +31,33 @@ class PromptManager:
         if 'years_of_experience' in user_core_data and user_core_data['years_of_experience'] is not None:
             prompt_parts.append(f"- Total Years of Experience: {user_core_data['years_of_experience']} years")
 
+        # --- Job History Section ---
         if user_core_data.get('job_history'):
-            prompt_parts.append("\n- Job History (Please summarize each responsibility using strong action verbs and quantify outcomes where appropriate):")  # <--- Add this instruction
+            prompt_parts.append("\n- **Work Experience:**")
+            # Sort jobs in reverse chronological order based on dates
+            sorted_jobs = sorted(user_core_data['job_history'], key=lambda x: x.get('dates', ''), reverse=True)
 
-            for job in user_core_data['job_history']:
+            for job in sorted_jobs:
+                title = job.get('title', '')
+                company = job.get('company', '')
+                location = job.get('location', '')
+                dates = job.get('dates', '')
+                responsibilities = job.get('responsibilities', '')  # This is your raw input line(s)
+
                 prompt_parts.append(
-                    f"  * {job.get('title', '')} at {job.get('company', '')} ({job.get('dates', '')}): {job.get('responsibilities', '')}")
+                    f"\n  * **{title}** at {company} | {location} | {dates}\n"
+                    f"    Based on the following core responsibilities provided, **expand each into 3-5 impactful, quantified bullet points**. "
+                    f"Focus on the 'Problem-Action-Result' (PAR) or 'Situation-Task-Action-Result' (STAR) methodology. "
+                    f"**Elaborate on technical challenges, solutions, and measurable outcomes.** "
+                    f"If the input is generic or concise, **infer and add relevant details, common tasks, and achievements for such roles** (e.g., for a Full Stack Engineer (AI), think about data integration, API development, performance optimization, model deployment, and collaboration with cross-functional teams). "
+                    f"Ensure each bullet point starts with a strong action verb.\n"
+                    f"    **Core Responsibilities for Expansion (Analyze these):**\n"
+                    f"    ```\n"
+                    f"    {responsibilities}\n"  # The AI will read and expand upon this
+                    f"    ```\n"
+                    f"    **Generated Detailed Bullet Points (aim for 3-5 comprehensive points):**"
+                    # This is where the AI will write
+                )
 
         if user_core_data.get('education'):
             prompt_parts.append("\n- Education:")
@@ -55,6 +77,7 @@ class PromptManager:
             prompt_parts.append("\n- Projects:")
             for proj in user_core_data['projects']:
                 prompt_parts.append(f"  * {proj.get('name', '')}: {proj.get('description', '')}")
+
 
         # 2. Learned Preferences (Dynamic Agentic Rules)
         # Iterate over the list of rules and add them to the prompt if active
@@ -99,16 +122,15 @@ class PromptManager:
                             inclusion_rules.append(rule_text)
 
         if stylistic_rules:
-            prompt_parts.append(
-                "\nBased on previous interactions and feedback, apply the following specific stylistic guidelines:")
+            prompt_parts.append("\n\n**Overall Resume Guidelines (Apply these after generating all sections):**")
             for rule_text in stylistic_rules:
                 prompt_parts.append(f"- {rule_text}")
 
         if exclusion_rules:
             prompt_parts.append(
-                "\nIMPORTANT: Adhere strictly to the following content exclusion rules. Do NOT include any information related to these topics or keywords from the provided core data:")
+                "\nIMPORTANT: Adhere strictly to the following content exclusion rules. Do NOT include any information related to these topics or keywords:")
             for rule_text in exclusion_rules:
-                prompt_parts.append(f"- {rule_text}")  # LLM will read "Do not include C# language details."
+                prompt_parts.append(f"- {rule_text}")
 
         if inclusion_rules:
             prompt_parts.append(
@@ -116,8 +138,62 @@ class PromptManager:
             for rule_text in inclusion_rules:
                 prompt_parts.append(f"- {rule_text}")
 
+        prompt_parts.append("\n**Generate the complete resume now, strictly adhering to all the instructions, data, and preferences provided.**")
+        prompt_parts.append("Format the resume in a clean, professional, and easy-to-read markdown format.")
         return "\n".join(prompt_parts)
 
+    def generate_suggestions_prompt(self, user_core_data: Dict[str, Any], learned_preferences: List[Dict[str, Any]],
+                                    target_job_description: Optional[str] = None) -> str:
+        """
+        Constructs a comprehensive prompt for the LLM to generate proactive resume suggestions.
+        Analyzes core data, learned preferences, and an optional target job description.
+        """
+        core_data_json = json.dumps(user_core_data, indent=2)
+        preferences_json = json.dumps(learned_preferences, indent=2)
+
+        prompt = (
+            "You are an expert career coach and resume strategist. Your primary goal is to analyze a candidate's resume data "
+            "and their past learned preferences, then provide proactive, actionable suggestions for improving their resume. "
+            "Focus on best practices for modern, ATS-friendly resumes (conciseness, quantification, strong action verbs, relevance).\n\n"
+        )
+
+        prompt += (
+            "**Candidate's Current Core Resume Data (JSON format):**\n```json\n"
+            f"{core_data_json}\n```\n\n"
+        )
+
+        if learned_preferences:
+            prompt += (
+                "**Candidate's Previously Learned Preferences/Rules (JSON format):**\n```json\n"
+                f"{preferences_json}\n```\n"
+                "When providing suggestions, acknowledge these existing preferences and do not suggest things already covered by active rules. If a rule is about an area that still needs improvement despite the rule, phrase the suggestion as a reinforcement or a deeper dive.\n\n"
+            )
+        else:
+            prompt += "Candidate has no specific learned preferences yet.\n\n"
+
+        if target_job_description:
+            prompt += (
+                f"**Target Job Description for Contextual Analysis:**\n```\n{target_job_description}\n```\n"
+                "Prioritize suggestions that help align the resume more closely with this job description. Identify potential skill gaps, areas to emphasize, or experiences to rephrase for maximum relevance to this role.\n\n"
+            )
+
+        prompt += (
+            "Based on the above information, provide a list of clear, concise, and professional suggestions. "
+            "Focus on actionable advice. Output your suggestions as a JSON array where each object strictly follows this schema:\n"
+            f"```json\n"
+            f"[\n"
+            f"  {{\n"
+            f"    \"category\": \"string\", // Must be one of: \"Content Improvement\", \"Stylistic Tip\", \"Skill Gap\", \"Formatting\", \"Overall Strategy\"\n"
+            f"    \"suggestion\": \"string\", // The natural language suggestion, e.g., \"Consider adding quantified achievements to your job history in the form of numbers and percentages.\"\n"
+            f"    \"action_type\": \"string\" | null, // Optional: e.g., \"add_skill\", \"rephrase_summary\", \"quantify_experience\", \"update_section\"\n"
+            f"    \"relevant_field\": \"string\" | null // Optional: e.g., \"skills\", \"summary\", \"job_history.responsibilities\", \"education\"\n"
+            f"  }}\n"
+            f"]\n"
+            f"```\n\n"
+            "Provide at least 3 to 5 distinct and valuable suggestions. Do not include any conversational text outside the JSON. Ensure the JSON is valid and complete."
+        )
+
+        return prompt
 
 # Example usage (for testing this module directly)
 if __name__ == "__main__":
