@@ -195,6 +195,108 @@ class PromptManager:
 
         return prompt
 
+    def generate_critique_prompt(self,
+                                 resume_draft: str,
+                                 learned_preferences: List[Dict[str, Any]],
+                                 target_job_description: Optional[str] = None) -> str:
+        """
+        Constructs a prompt for the LLM to critique a generated resume draft.
+        """
+        preferences_json = json.dumps(learned_preferences, indent=2)
+
+        prompt = (
+            "You are an expert resume reviewer and AI assistant. Your task is to critically analyze a generated resume "
+            "against specific guidelines and a target job description (if provided). "
+            "Identify any areas where the resume deviates from the instructions or could be improved.\n\n"
+        )
+
+        prompt += "**Resume to Critique:**\n```\n"
+        prompt += resume_draft  # Use resume_draft here
+        prompt += "\n```\n\n"
+
+        if learned_preferences:
+            prompt += "**Learned Preferences (Rules to enforce):**\n```json\n"
+            prompt += preferences_json
+            prompt += "\n```\n"
+            prompt += "Strictly identify if any of these active rules have been violated. For rules with `applies_to_target_job_only: true`, only enforce them if a target job description is provided below.\n\n"
+
+        if target_job_description:
+            prompt += "**Target Job Description (to tailor the resume to):**\n```\n"
+            prompt += target_job_description
+            prompt += "\n```\n"
+            prompt += "Assess how well the resume is tailored to this job description. Look for keyword relevance, skill alignment, and emphasis on relevant experiences.\n\n"
+
+        prompt += (
+            "Identify specific issues or areas for improvement. Be concise and actionable in your critique. "
+            "Output a JSON object with two keys: `issues` (a list of critique items) and `overall_assessment` (a brief summary). "
+            "Also include a `has_issues` boolean indicating if any issues were found.\n"
+            "**Critique Item Schema:**\n"
+            f"```json\n"
+            f"{{\n"
+            f"  \"issues\": [\n"
+            f"    {{\n"
+            f"      \"category\": \"Rule Violation\" | \"Stylistic\" | \"Content Gap\" | \"Target JD Mismatch\" | \"Best Practice\" | \"Other\",\n"
+            f"      \"description\": \"Specific description of the issue, e.g., 'Summary is too long; needs to be under 3 sentences.'\",\n"
+            f"      \"severity\": \"low\" | \"medium\" | \"high\",\n"
+            f"      \"relevant_rule_id\": \"Optional: ID of the rule if applicable\",\n"
+            f"      \"suggested_action\": \"Optional: Actionable advice to fix (e.g., 'shorten', 'add numbers', 'remove')\"\n"
+            f"    }}\n"
+            f"  ],\n"
+            f"  \"overall_assessment\": \"A brief, overall summary of the critique.\",\n"
+            f"  \"has_issues\": true | false\n"
+            f"}}\n"
+            f"```\n\n"
+            "If no issues are found, the `issues` list should be empty and `has_issues` should be `false`."
+        )
+        return prompt
+
+    def generate_refinement_prompt(self, previous_resume_content: str, critiques: List[Dict[str, Any]],
+                                   user_core_data: Dict[str, Any], learned_preferences: List[Dict[str, Any]],
+                                   target_job_description: Optional[str] = None) -> str:
+        """
+        Constructs a prompt for the LLM to refine a resume based on specific critiques.
+        """
+        critiques_json = json.dumps(critiques, indent=2)
+        preferences_json = json.dumps(learned_preferences, indent=2)
+        core_data_json = json.dumps(user_core_data, indent=2)
+
+        prompt = (
+            "You are an expert resume writer and AI assistant tasked with refining a resume. "
+            "You have been provided with a previous version of a resume and a list of specific critiques. "
+            "Your goal is to address *all* the critiques and generate a *new, improved version* of the resume. "
+            "Ensure the refined resume still adheres to all original instructions, core data, and learned preferences.\n\n"
+        )
+
+        prompt += "**Previous Resume Version:**\n```\n"
+        prompt += previous_resume_content
+        prompt += "\n```\n\n"
+
+        prompt += "**Critiques to Address:**\n```json\n"
+        prompt += critiques_json
+        prompt += "\n```\n\n"
+
+        prompt += (
+            "**Original User Core Data (for reference on content):**\n```json\n"
+            f"{core_data_json}\n```\n\n"
+        )
+        prompt += (
+            "**Original Learned Preferences (Rules to still enforce):**\n```json\n"
+            f"{preferences_json}\n```\n\n"
+        )
+
+        if target_job_description:
+            prompt += (
+                "**Original Target Job Description (for continued tailoring):**\n```\n"
+                f"{target_job_description}\n```\n\n"
+            )
+
+        prompt += (
+            "Generate the complete, refined resume. Focus exclusively on fixing the identified issues. "
+            "Ensure the output is a professional, markdown-formatted resume and contains no conversational text outside the resume content itself."
+        )
+        return prompt
+
+
 # Example usage (for testing this module directly)
 if __name__ == "__main__":
     pm = PromptManager()

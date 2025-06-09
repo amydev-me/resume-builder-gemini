@@ -10,7 +10,7 @@
         "company": "OOm Pte Ltd",
         "location": "Singapore",
         "dates": "FEB 2025 - Current",
-        "responsibilities": "Built an application like SERanking using Node.js, React, and MongoDB."
+        "responsibilities": "Build a application like SERanking using Nodejs, React and Mongo.Led the development of an AI-powered writing assistant using OpenAI and LangChain with Retrieval-Augmented Generation (RAG) to generate brand-aligned, SEO-optimized content.Engineered a backend system to embed and retrieve brand guideline documents, enabling the assistant to maintain consistent tone and messaging during generation.Designed logic to intelligently classify user inputs and refine underlying generation instructions in real time, ensuring personalized and context-aware output.Integrated Python-based AI workflows with scalable NoSQL storage to support flexible data handling and fast response times.Focused on system architecture, LLM integration, and prompt engineering strategies to automate high-quality content creation for marketing and branding teams.Implemented cost-efficient techniques such as chunking, summarization, and token reduction to optimize LLM performance and minimize API usage costs without compromising output quality."
       },
       {
         "title": "SOFTWARE ENGINEER",
@@ -71,7 +71,7 @@
   "learned_preferences": [
     {
       "id": "pref_1",
-      "rule": "The summary should be no more than 3 concise sentences.",
+      "rule": "The summary should be exactly 2 concise sentences.",
       "active": true
     },
     {
