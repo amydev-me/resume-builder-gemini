@@ -1,4 +1,6 @@
 import os
+from pathlib import Path
+
 from dotenv import load_dotenv
 import uuid
 from datetime import datetime
@@ -17,6 +19,9 @@ from .core_ai.prompt_manager import PromptManager
 from .utils.text_processing import clean_llm_output  # For cleaning LLM output
 from .schemas.suggestion import GetSuggestionsRequest, SuggestionsResponse, SuggestionItem # <--- Make sure these are imported
 from .schemas.critique import ResumeCritique, CritiqueIssue # <--- NEW IMPORTS
+from sqlalchemy.orm import Session # Import Session
+from .db.database import engine, get_db, Base # Import Base as well
+from .db import models # Import your models
 
 import json
 # Load environment variables
@@ -66,6 +71,19 @@ app.add_middleware(
     allow_headers=["*"],    # Allow all headers
 )
 
+# --- NEW: Function to create database tables ---
+def create_db_tables():
+    models.Base.metadata.create_all(bind=engine)
+
+# In your FastAPI app startup event (before the routes)
+@app.on_event("startup")
+async def startup_event():
+    # Create the 'data' directory if it doesn't exist for SQLite DB file
+    if not Path("./data").exists():
+        Path("./data").mkdir(parents=True, exist_ok=True)
+    create_db_tables()
+    print("Database tables created/checked.")
+    # Initialize your LLM client here if not already done
 
 # --- Pydantic Models (retained for clarity and type safety) ---
 class GenerateRequest(BaseModel):
