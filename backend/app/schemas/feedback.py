@@ -1,5 +1,5 @@
 from typing import Optional, List, Dict, Any
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from .critique import ResumeCritique # <--- Ensure this NEW IMPORT is at the top
 
 class FeedbackItem(BaseModel):
@@ -8,6 +8,15 @@ class FeedbackItem(BaseModel):
     comment: str    # User's textual feedback (e.g., "Make this more concise")
     is_positive: bool = True # Whether the feedback is generally positive or negative
     highlight_range: Optional[List[int]] = None # [start_index, end_index] of highlighted text
+
+class SubmitFeedbackRequest(BaseModel):
+    """
+    Schema for submitting user feedback on a generated resume version.
+    """
+    resume_version_id: str = Field(..., description="The ID of the resume version being commented on.")
+    feedback_items: List[FeedbackItem] = Field(..., min_length=1, description="A list of specific feedback items.")
+    target_job_description: Optional[str] = Field(None, description="The job description used for this resume generation, if any.")
+
 
 class ResumeFeedback(BaseModel):
     resume_version_id: str

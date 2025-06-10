@@ -1,30 +1,41 @@
 import os
+import uuid
+import json
 from pathlib import Path
 
 from dotenv import load_dotenv
-import uuid
-from datetime import datetime
-from typing import Optional
+from datetime import datetime, timedelta
+from typing import Optional, List
 
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, status
 from fastapi.middleware.cors import CORSMiddleware # Import CORSMiddleware
-from pydantic import BaseModel, ValidationError
+from fastapi.security import OAuth2PasswordRequestForm # For login form data
 
-from .utils.file_manager import load_json_data, save_json_data, save_resume_version
-from .schemas.feedback import ResumeFeedback, ResumeContentResponse
-from .services.feedback_services import  process_feedback_and_update_preferences
-# Import the new core_ai modules
+from pydantic import BaseModel, ValidationError
+from sqlalchemy.orm import Session
+
+from .utils.file_manager import load_json_data
+from .utils.text_processing import clean_llm_output
 from .core_ai.llm_client import LLMClient
 from .core_ai.prompt_manager import PromptManager
-from .utils.text_processing import clean_llm_output  # For cleaning LLM output
-from .schemas.suggestion import GetSuggestionsRequest, SuggestionsResponse, SuggestionItem # <--- Make sure these are imported
-from .schemas.critique import ResumeCritique, CritiqueIssue # <--- NEW IMPORTS
-from sqlalchemy.orm import Session # Import Session
-from .db.database import engine, get_db, Base # Import Base as well
-from .db import models # Import your models
 
-import json
-# Load environment variables
+from .schemas.feedback import ResumeFeedback, ResumeContentResponse, SubmitFeedbackRequest
+from .schemas.requests import SetupUserProfileRequest
+from .schemas.suggestion import GetSuggestionsRequest, SuggestionsResponse, SuggestionItem
+from .schemas.critique import ResumeCritique, CritiqueIssue
+from .schemas.auth import UserCreate, UserLogin, Token, UserInDB
+
+from .db.database import get_db, engine, Base # Import Base for table creation
+from .db import models # Your database models
+
+from .core.security import get_password_hash, verify_password
+from .core.auth import authenticate_user, create_access_token, get_current_user, oauth2_scheme
+from .config import SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES, USER_PROFILE_JSON_FILE_NAME, RESUME_VERSIONS_JSON_FILE_NAME, DATA_DIR_NAME # Import config variables
+
+
+
+
+
 load_dotenv()
 
 # --- Configuration ---
@@ -85,6 +96,47 @@ async def startup_event():
     print("Database tables created/checked.")
     # Initialize your LLM client here if not already done
 
+
+@app.post("/register", response_model=UserInDB, status_code=status.HTTP_201_CREATED)
+async def register_user(user_create: UserCreate, db: Session = Depends(get_db)):
+    db_user = db.query(models.User).filter(models.User.username == user_create.username).first()
+    if db_user:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Username already registered")
+
+    hashed_password = get_password_hash(user_create.password)
+    db_user = models.User(username=user_create.username, email=user_create.email, hashed_password=hashed_password)
+    db.add(db_user)
+    db.commit()
+    db.refresh(db_user)
+
+    # Automatically create an empty user profile for the new user
+    user_profile = models.UserProfile(owner_id=db_user.id, core_data_json=json.dumps({}))
+    db.add(user_profile)
+    db.commit()
+    db.refresh(user_profile)
+
+    return db_user
+
+@app.post("/token", response_model=Token)
+async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    user = authenticate_user(db, form_data.username, form_data.password)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": user.username}, expires_delta=access_token_expires
+    )
+    return {"access_token": access_token, "token_type": "bearer"}
+
+@app.get("/users/me/", response_model=UserInDB)
+async def read_users_me(current_user: models.User = Depends(get_current_user)):
+    # This is a protected route, accessible only with a valid token
+    return current_user
+
 # --- Pydantic Models (retained for clarity and type safety) ---
 class GenerateRequest(BaseModel):
     prompt_text: str
@@ -108,36 +160,243 @@ async def test_gemini(request: GenerateRequest):
         raise HTTPException(status_code=500, detail=f"LLM Client Error: {str(e)}")
 
 
-@app.get("/user-profile/")
-async def get_user_profile():
-    try:
-        profile = load_json_data(USER_PROFILE_FILE)
-        return profile
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error loading user profile: {str(e)}")
+# @app.get("/user-profile/")
+# async def get_user_profile():
+#     try:
+#         profile = load_json_data(USER_PROFILE_FILE)
+#         return profile
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=f"Error loading user profile: {str(e)}")
+# --- Modify existing routes to require authentication ---
+# Replace your current `get_user_profile` with this version
+@app.get("/user-profile/", response_model=dict)  # Adjust response model if you create a UserProfile schema
+async def get_user_profile(current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    # Load user profile from the database, associated with the current_user
+    db_profile = db.query(models.UserProfile).filter(models.UserProfile.owner_id == current_user.id).first()
+    if not db_profile or not db_profile.core_data_json:
+        # Return an empty profile if not found, or create a default one
+        return {"core_data": {}, "learned_preferences": []}
+
+    core_data = json.loads(db_profile.core_data_json)
+
+    # Load learned preferences from the database
+    db_preferences = db.query(models.LearnedPreference).filter(
+        models.LearnedPreference.owner_id == current_user.id).all()
+    learned_preferences = [json.loads(p.preference_data_json) for p in db_preferences]
+
+    return {"core_data": core_data, "learned_preferences": learned_preferences}
 
 
+# Replace your current `setup_user_profile` with this version
+@app.post("/setup-user-profile/")
+async def setup_user_profile(
+        request: SetupUserProfileRequest,
+        current_user: models.User = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
+    # Retrieve or create the user profile in the database
+    db_profile = db.query(models.UserProfile).filter(models.UserProfile.owner_id == current_user.id).first()
+    if db_profile:
+        db_profile.core_data_json = json.dumps(request.core_data)
+        # Assuming learned preferences are managed separately or appended
+    else:
+        db_profile = models.UserProfile(owner_id=current_user.id, core_data_json=json.dumps(request.core_data))
+        db.add(db_profile)
+
+    db.commit()
+    db.refresh(db_profile)
+    return {"message": "User profile updated successfully."}
+
+# @app.post("/generate-resume/", response_model=ResumeContentResponse)
+# async def generate_resume(request: GenerateResumeRequest):
+#     """
+#     Generates a resume, performs self-critique, and iteratively refines it.
+#     """
+#     try:
+#         user_profile = load_json_data(USER_PROFILE_FILE) # Assuming USER_PROFILE_FILE is defined
+#         core_data = user_profile.get("core_data", {})
+#         learned_preferences = user_profile.get("learned_preferences", [])
+#
+#         current_resume_draft = ""
+#         current_version_name = "Initial Draft"
+#         final_critique_results: Optional[ResumeCritique] = None # To hold the critique of the *final* version
+#
+#         # Loop for initial generation and subsequent refinements
+#         # Iteration 0 is for initial generation, subsequent iterations are for refinement.
+#         for iteration in range(MAX_REFINEMENT_ITERATIONS + 1):
+#             print(f"--- Generation/Refinement Iteration {iteration} ---")
+#
+#             if iteration == 0:
+#                 # First pass: Generate the initial resume
+#                 print("Generating initial resume draft...")
+#                 resume_prompt = prompt_manager.generate_resume_prompt(
+#                     user_core_data=core_data,
+#                     learned_preferences=learned_preferences,
+#                     initial_request=request.initial_prompt,
+#                     target_job_description=request.target_job_description
+#                 )
+#                 raw_generated_content = llm_client.generate_text(resume_prompt, temperature=0.7)
+#                 current_version_name = f"Resume Draft {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+#             else:
+#                 # Subsequent passes: Refine based on the last critique
+#                 if not final_critique_results or not final_critique_results.has_issues:
+#                     # This should ideally not happen if loop broke correctly, but as a safeguard
+#                     print("No issues found in previous iteration or critique missing. Skipping refinement.")
+#                     break
+#
+#                 print(f"Refining based on previous critiques (Iteration {iteration})...")
+#                 # Pass the issues from the last critique for refinement
+#                 refinement_prompt = prompt_manager.generate_refinement_prompt(
+#                     previous_resume_content=current_resume_draft, # The draft from the previous iteration
+#                     critiques=[c.model_dump() for c in final_critique_results.issues], # Pass the issues list
+#                     user_core_data=core_data, # Provide context for the LLM
+#                     learned_preferences=learned_preferences, # Provide context for the LLM
+#                     target_job_description=request.target_job_description # Provide context for the LLM
+#                 )
+#                 raw_generated_content = llm_client.generate_text(refinement_prompt, temperature=0.7)
+#                 current_version_name = f"Refined Draft {datetime.now().strftime('%Y-%m-%d %H:%M')} (Iter {iteration})"
+#
+#
+#             # --- Clean the markdown code block from generated content ---
+#             cleaned_content = clean_llm_output(raw_generated_content) # Re-using your clean_llm_output
+#             current_resume_draft = cleaned_content # Update the draft for the next iteration/final output
+#
+#             # --- Critique the current draft (after generation or refinement) ---
+#             print(f"Critiquing the current draft (Iteration {iteration})...")
+#             critique_prompt = prompt_manager.generate_critique_prompt(
+#                 resume_draft=current_resume_draft, # Critique the *current* draft
+#                 learned_preferences=learned_preferences,
+#                 target_job_description=request.target_job_description
+#             )
+#             raw_critique_json = llm_client.generate_text(critique_prompt, temperature=0.1) # Low temp for deterministic critique
+#
+#             # Clean markdown from critique JSON
+#             cleaned_critique_json = raw_critique_json.strip()
+#             if cleaned_critique_json.startswith("```json"):
+#                 cleaned_critique_json = cleaned_critique_json[len("```json"):].strip()
+#             if cleaned_critique_json.endswith("```"):
+#                 cleaned_critique_json = cleaned_critique_json[:-len("```")].strip()
+#
+#             try:
+#                 critique_data = json.loads(cleaned_critique_json)
+#                 final_critique_results = ResumeCritique(**critique_data) # Store for current/next iteration check
+#             except (json.JSONDecodeError, ValidationError, ValueError) as e:
+#                 print(f"ERROR: Failed to parse critique JSON in iteration {iteration}: {e}")
+#                 print(f"Raw critique output: {raw_critique_json}")
+#                 # If critique itself is malformed, we can't trust it. Treat as no issues to break loop.
+#                 final_critique_results = ResumeCritique(
+#                     issues=[CritiqueIssue(category="Error", description=f"Critique parsing failed: {e}", severity="high")],
+#                     overall_assessment="Critique generation failed/malformed. Cannot trust assessment.",
+#                     has_issues=False # Forcing False to break loop if critique is unusable
+#                 )
+#
+#             # Check if further refinement is needed
+#             if not final_critique_results.has_issues:
+#                 print(f"No issues found in Iteration {iteration}. Breaking refinement loop.")
+#                 break # Exit loop if no issues are detected
+#
+#             # If we are in the last allowed iteration, and there are still issues,
+#             # we will return this version as it's the best we could do.
+#             if iteration == MAX_REFINEMENT_ITERATIONS:
+#                 print(f"Max refinement iterations ({MAX_REFINEMENT_ITERATIONS}) reached. Returning current draft.")
+#                 break # Exit loop if max iterations reached
+#
+#
+#         # --- Save the Final Generated/Refined Resume Version ---
+#         # This will be the last 'current_resume_draft' and its 'final_critique_results'
+#         resume_version_id = str(uuid.uuid4())
+#         timestamp_str = datetime.now().isoformat() + 'Z'
+#
+#         save_resume_version(
+#             resume_id=resume_version_id,
+#             version_name=current_version_name, # Name reflects the last action (initial or refined)
+#             content=current_resume_draft,
+#             core_data_used=core_data,
+#             learned_preferences_used=learned_preferences,
+#             target_job_description_used=request.target_job_description,
+#             critique_data=final_critique_results.model_dump() if final_critique_results else None # Save the critique of the *final* version
+#         )
+#
+#         # --- Return the Final Refined Resume and its Critique ---
+#         return ResumeContentResponse(
+#             id=resume_version_id,
+#             version_name=current_version_name,
+#             content=current_resume_draft,
+#             timestamp=timestamp_str,
+#             feedback_summary="Generated with agentic self-correction.",
+#             core_data_used=core_data,
+#             learned_preferences_used=learned_preferences,
+#             target_job_description_used=request.target_job_description,
+#             critique=final_critique_results # Pass the critique of the final version
+#         )
+#
+#     except HTTPException:
+#         raise
+#     except Exception as e:
+#         import traceback
+#         traceback.print_exc()
+#         raise HTTPException(status_code=500, detail=f"An unexpected error occurred during resume generation: {str(e)}")
+
+
+
+
+# @app.post("/setup-user-profile/")
+# async def setup_user_profile(profile_data: dict):
+#     try:
+#         current_profile = load_json_data(USER_PROFILE_FILE)
+#         if "core_data" in profile_data:
+#             current_profile["core_data"].update(profile_data["core_data"])
+#         if "learned_preferences" in profile_data:
+#             current_profile["learned_preferences"].update(profile_data["learned_preferences"])
+#
+#         save_json_data(USER_PROFILE_FILE, current_profile)
+#         return {"success": True, "message": "User profile updated successfully!"}
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=f"Error setting up user profile: {str(e)}")
+
+
+# @app.post("/submit-feedback/")
+# async def submit_feedback(feedback: ResumeFeedback):
+#     """
+#     Receives user feedback and updates learned preferences using the feedback service.
+#     """
+#     try:
+#         process_feedback_and_update_preferences(feedback)  # This now uses AgenticLearner
+#         return {"success": True, "message": "Feedback processed and preferences updated."}
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=f"Error processing feedback: {str(e)}")
+
+# Modify `submit_feedback` to use the database and current_user
+
+# Modify `generate_resume` to use the database for data and associate resume with user
 @app.post("/generate-resume/", response_model=ResumeContentResponse)
-async def generate_resume(request: GenerateResumeRequest):
+async def generate_resume(
+        request: GenerateResumeRequest,
+        current_user: models.User = Depends(get_current_user),  # <--- PROTECT THIS ROUTE
+        db: Session = Depends(get_db)  # <--- Inject database session
+):
     """
     Generates a resume, performs self-critique, and iteratively refines it.
     """
     try:
-        user_profile = load_json_data(USER_PROFILE_FILE) # Assuming USER_PROFILE_FILE is defined
-        core_data = user_profile.get("core_data", {})
-        learned_preferences = user_profile.get("learned_preferences", [])
+        # Load user profile and learned preferences from the database for the current_user
+        db_profile = db.query(models.UserProfile).filter(models.UserProfile.owner_id == current_user.id).first()
+        core_data = json.loads(db_profile.core_data_json) if db_profile and db_profile.core_data_json else {}
+
+        db_preferences = db.query(models.LearnedPreference).filter(
+            models.LearnedPreference.owner_id == current_user.id).all()
+        learned_preferences = [json.loads(p.preference_data_json) for p in db_preferences]
 
         current_resume_draft = ""
         current_version_name = "Initial Draft"
-        final_critique_results: Optional[ResumeCritique] = None # To hold the critique of the *final* version
+        final_critique_results: Optional[ResumeCritique] = None
 
-        # Loop for initial generation and subsequent refinements
-        # Iteration 0 is for initial generation, subsequent iterations are for refinement.
         for iteration in range(MAX_REFINEMENT_ITERATIONS + 1):
             print(f"--- Generation/Refinement Iteration {iteration} ---")
 
+            # ... (Rest of your generate_resume logic, it remains largely the same) ...
+            # The only difference is `save_resume_version` call at the end:
             if iteration == 0:
-                # First pass: Generate the initial resume
                 print("Generating initial resume draft...")
                 resume_prompt = prompt_manager.generate_resume_prompt(
                     user_core_data=core_data,
@@ -148,39 +407,31 @@ async def generate_resume(request: GenerateResumeRequest):
                 raw_generated_content = llm_client.generate_text(resume_prompt, temperature=0.7)
                 current_version_name = f"Resume Draft {datetime.now().strftime('%Y-%m-%d %H:%M')}"
             else:
-                # Subsequent passes: Refine based on the last critique
                 if not final_critique_results or not final_critique_results.has_issues:
-                    # This should ideally not happen if loop broke correctly, but as a safeguard
                     print("No issues found in previous iteration or critique missing. Skipping refinement.")
                     break
-
                 print(f"Refining based on previous critiques (Iteration {iteration})...")
-                # Pass the issues from the last critique for refinement
                 refinement_prompt = prompt_manager.generate_refinement_prompt(
-                    previous_resume_content=current_resume_draft, # The draft from the previous iteration
-                    critiques=[c.model_dump() for c in final_critique_results.issues], # Pass the issues list
-                    user_core_data=core_data, # Provide context for the LLM
-                    learned_preferences=learned_preferences, # Provide context for the LLM
-                    target_job_description=request.target_job_description # Provide context for the LLM
+                    previous_resume_content=current_resume_draft,
+                    critiques=[c.model_dump() for c in final_critique_results.issues],
+                    user_core_data=core_data,
+                    learned_preferences=learned_preferences,
+                    target_job_description=request.target_job_description
                 )
                 raw_generated_content = llm_client.generate_text(refinement_prompt, temperature=0.7)
                 current_version_name = f"Refined Draft {datetime.now().strftime('%Y-%m-%d %H:%M')} (Iter {iteration})"
 
+            cleaned_content = clean_llm_output(raw_generated_content)
+            current_resume_draft = cleaned_content
 
-            # --- Clean the markdown code block from generated content ---
-            cleaned_content = clean_llm_output(raw_generated_content) # Re-using your clean_llm_output
-            current_resume_draft = cleaned_content # Update the draft for the next iteration/final output
-
-            # --- Critique the current draft (after generation or refinement) ---
             print(f"Critiquing the current draft (Iteration {iteration})...")
             critique_prompt = prompt_manager.generate_critique_prompt(
-                resume_draft=current_resume_draft, # Critique the *current* draft
+                resume_draft=current_resume_draft,
                 learned_preferences=learned_preferences,
                 target_job_description=request.target_job_description
             )
-            raw_critique_json = llm_client.generate_text(critique_prompt, temperature=0.1) # Low temp for deterministic critique
+            raw_critique_json = llm_client.generate_text(critique_prompt, temperature=0.1)
 
-            # Clean markdown from critique JSON
             cleaned_critique_json = raw_critique_json.strip()
             if cleaned_critique_json.startswith("```json"):
                 cleaned_critique_json = cleaned_critique_json[len("```json"):].strip()
@@ -189,55 +440,51 @@ async def generate_resume(request: GenerateResumeRequest):
 
             try:
                 critique_data = json.loads(cleaned_critique_json)
-                final_critique_results = ResumeCritique(**critique_data) # Store for current/next iteration check
+                final_critique_results = ResumeCritique(**critique_data)
             except (json.JSONDecodeError, ValidationError, ValueError) as e:
                 print(f"ERROR: Failed to parse critique JSON in iteration {iteration}: {e}")
                 print(f"Raw critique output: {raw_critique_json}")
-                # If critique itself is malformed, we can't trust it. Treat as no issues to break loop.
                 final_critique_results = ResumeCritique(
-                    issues=[CritiqueIssue(category="Error", description=f"Critique parsing failed: {e}", severity="high")],
+                    issues=[
+                        CritiqueIssue(category="Error", description=f"Critique parsing failed: {e}", severity="high")],
                     overall_assessment="Critique generation failed/malformed. Cannot trust assessment.",
-                    has_issues=False # Forcing False to break loop if critique is unusable
+                    has_issues=False
                 )
 
-            # Check if further refinement is needed
             if not final_critique_results.has_issues:
                 print(f"No issues found in Iteration {iteration}. Breaking refinement loop.")
-                break # Exit loop if no issues are detected
+                break
 
-            # If we are in the last allowed iteration, and there are still issues,
-            # we will return this version as it's the best we could do.
             if iteration == MAX_REFINEMENT_ITERATIONS:
                 print(f"Max refinement iterations ({MAX_REFINEMENT_ITERATIONS}) reached. Returning current draft.")
-                break # Exit loop if max iterations reached
+                break
 
-
-        # --- Save the Final Generated/Refined Resume Version ---
-        # This will be the last 'current_resume_draft' and its 'final_critique_results'
-        resume_version_id = str(uuid.uuid4())
-        timestamp_str = datetime.now().isoformat() + 'Z'
-
-        save_resume_version(
-            resume_id=resume_version_id,
-            version_name=current_version_name, # Name reflects the last action (initial or refined)
-            content=current_resume_draft,
-            core_data_used=core_data,
-            learned_preferences_used=learned_preferences,
-            target_job_description_used=request.target_job_description,
-            critique_data=final_critique_results.model_dump() if final_critique_results else None # Save the critique of the *final* version
-        )
-
-        # --- Return the Final Refined Resume and its Critique ---
-        return ResumeContentResponse(
-            id=resume_version_id,
+        # --- Save the Final Generated/Refined Resume Version to the DATABASE ---
+        db_resume_version = models.ResumeVersion(
+            owner_id=current_user.id,  # Link to the authenticated user
+            resume_uuid=str(uuid.uuid4()),  # Still keep a UUID if you want for external reference
             version_name=current_version_name,
             content=current_resume_draft,
-            timestamp=timestamp_str,
-            feedback_summary="Generated with agentic self-correction.",
-            core_data_used=core_data,
-            learned_preferences_used=learned_preferences,
+            core_data_used_json=json.dumps(core_data),  # Store as JSON string
+            learned_preferences_used_json=json.dumps(learned_preferences),  # Store as JSON string
             target_job_description_used=request.target_job_description,
-            critique=final_critique_results # Pass the critique of the final version
+            critique_data_json=json.dumps(final_critique_results.model_dump()) if final_critique_results else None
+        )
+        db.add(db_resume_version)
+        db.commit()
+        db.refresh(db_resume_version)  # Refresh to get the database-assigned ID
+
+        # Return the final refined resume and its critique (using Pydantic model)
+        return ResumeContentResponse(
+            id=str(db_resume_version.id),  # Return DB ID as string for consistency
+            version_name=db_resume_version.version_name,
+            content=db_resume_version.content,
+            timestamp=db_resume_version.timestamp.isoformat() + 'Z',  # Convert datetime to string
+            feedback_summary="Generated with agentic self-correction and multi-user support.",
+            core_data_used=json.loads(db_resume_version.core_data_used_json),
+            learned_preferences_used=json.loads(db_resume_version.learned_preferences_used_json),
+            target_job_description_used=db_resume_version.target_job_description_used,
+            critique=final_critique_results
         )
 
     except HTTPException:
@@ -248,33 +495,38 @@ async def generate_resume(request: GenerateResumeRequest):
         raise HTTPException(status_code=500, detail=f"An unexpected error occurred during resume generation: {str(e)}")
 
 
-
-
-@app.post("/setup-user-profile/")
-async def setup_user_profile(profile_data: dict):
-    try:
-        current_profile = load_json_data(USER_PROFILE_FILE)
-        if "core_data" in profile_data:
-            current_profile["core_data"].update(profile_data["core_data"])
-        if "learned_preferences" in profile_data:
-            current_profile["learned_preferences"].update(profile_data["learned_preferences"])
-
-        save_json_data(USER_PROFILE_FILE, current_profile)
-        return {"success": True, "message": "User profile updated successfully!"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error setting up user profile: {str(e)}")
-
-
 @app.post("/submit-feedback/")
-async def submit_feedback(feedback: ResumeFeedback):
-    """
-    Receives user feedback and updates learned preferences using the feedback service.
-    """
-    try:
-        process_feedback_and_update_preferences(feedback)  # This now uses AgenticLearner
-        return {"success": True, "message": "Feedback processed and preferences updated."}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error processing feedback: {str(e)}")
+async def submit_feedback(
+        feedback_request: SubmitFeedbackRequest,
+        current_user: models.User = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
+    # 1. Update Learned Preferences based on feedback (in DB)
+    for feedback_item in feedback_request.feedback_items:
+        # For simplicity, we'll store each feedback item as a new learned preference.
+        # In a real app, you'd process/aggregate this into existing preferences.
+        new_preference_data = {
+            "type": "user_feedback",
+            "comment": feedback_item.comment,
+            "is_positive": feedback_item.is_positive,
+            "related_to_version_id": feedback_request.resume_version_id,
+            "target_job_description": feedback_request.target_job_description  # Store for context
+        }
+        db_preference = models.LearnedPreference(
+            owner_id=current_user.id,
+            preference_data_json=json.dumps(new_preference_data)
+        )
+        db.add(db_preference)
+
+    db.commit()
+
+    # 2. Implement logic to generate a new refined preference list for this user
+    # This part would be more complex and involve the AI processing the new feedback
+    # and previous preferences. For now, simply adding new preference entry.
+    # In a more advanced system, you'd feed this back to your prompt_manager logic.
+
+    return {"message": "Feedback submitted successfully. Learned preferences updated."}
+
 
 @app.post("/get-suggestions/", response_model=SuggestionsResponse)
 async def get_suggestions(request: GetSuggestionsRequest):
@@ -324,3 +576,38 @@ async def get_suggestions(request: GetSuggestionsRequest):
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"An unexpected error occurred while getting suggestions: {str(e)}")
+
+
+# Add a new route to get all resume versions for the current user
+@app.get("/resume-versions/", response_model=List[ResumeContentResponse])
+async def get_all_resume_versions(
+        current_user: models.User = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
+    db_resume_versions = db.query(models.ResumeVersion).filter(
+        models.ResumeVersion.owner_id == current_user.id).order_by(models.ResumeVersion.timestamp.desc()).all()
+
+    response_versions = []
+    for rv in db_resume_versions:
+        critique = None
+        if rv.critique_data_json:
+            try:
+                critique = ResumeCritique(**json.loads(rv.critique_data_json))
+            except (json.JSONDecodeError, ValidationError):
+                print(f"Warning: Could not parse critique for resume version {rv.id}")
+
+        response_versions.append(
+            ResumeContentResponse(
+                id=str(rv.id),
+                version_name=rv.version_name,
+                content=rv.content,
+                timestamp=rv.timestamp.isoformat() + 'Z',
+                feedback_summary="Loaded from database.",
+                core_data_used=json.loads(rv.core_data_used_json) if rv.core_data_used_json else {},
+                learned_preferences_used=json.loads(
+                    rv.learned_preferences_used_json) if rv.learned_preferences_used_json else [],
+                target_job_description_used=rv.target_job_description_used,
+                critique=critique
+            )
+        )
+    return response_versions
