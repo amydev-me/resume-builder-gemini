@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 from datetime import datetime, timedelta
 from typing import Optional, List
 
-from fastapi import FastAPI, HTTPException, Depends, status
+from fastapi import FastAPI, HTTPException, Depends, status, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware # Import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm # For login form data
 
@@ -15,6 +15,7 @@ from pydantic import BaseModel, ValidationError
 from sqlalchemy.orm import Session
 
 from .utils.file_manager import load_json_data
+from .utils.resume_parser import parse_resume_content # NEW Import for parsing
 from .utils.text_processing import clean_llm_output
 from .core_ai.llm_client import LLMClient
 from .core_ai.prompt_manager import PromptManager
@@ -611,3 +612,85 @@ async def get_all_resume_versions(
             )
         )
     return response_versions
+
+
+@app.post("/upload-resume/")
+async def upload_resume(
+        file: UploadFile = File(...),
+        current_user: models.User = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
+    if not file.filename.endswith(('.pdf', '.docx')):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Unsupported file type. Only PDF and DOCX are allowed."
+        )
+
+    try:
+        file_content = await file.read()
+        extracted_text = parse_resume_content(file_content, file.filename)
+
+        if not extracted_text:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to extract text from the uploaded resume. Ensure it's a valid PDF or DOCX."
+            )
+
+        # Use LLM to extract structured data
+        extraction_prompt = prompt_manager.generate_core_data_extraction_prompt(extracted_text)
+        raw_extracted_json = llm_client.generate_text(extraction_prompt,
+                                                      temperature=0.1)  # Low temp for data extraction
+
+        # Clean markdown from JSON response
+        cleaned_json = raw_extracted_json.strip()
+        if cleaned_json.startswith("```json"):
+            cleaned_json = cleaned_json[len("```json"):].strip()
+        if cleaned_json.endswith("```"):
+            cleaned_json = cleaned_json[:-len("```")].strip()
+
+        try:
+            extracted_data = json.loads(cleaned_json)
+        except json.JSONDecodeError as e:
+            print(f"Error parsing LLM extracted JSON: {e}")
+            print(f"Raw LLM output: {raw_extracted_json}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"AI failed to extract valid JSON data from resume. Error: {e}"
+            )
+
+        # Update user profile in the database
+        db_profile = db.query(models.UserProfile).filter(models.UserProfile.owner_id == current_user.id).first()
+        if not db_profile:
+            # This case should ideally not happen if user registration creates a profile
+            db_profile = models.UserProfile(owner_id=current_user.id, core_data_json="{}")
+            db.add(db_profile)
+            db.commit()  # Commit to get an ID for the new profile if needed
+            db.refresh(db_profile)
+
+        # Merge extracted data with existing profile data (if any)
+        current_profile_data = json.loads(db_profile.core_data_json) if db_profile.core_data_json else {}
+
+        # Simple merge: new data overwrites old. For lists, you might want to append/deduplicate.
+        merged_profile_data = {**current_profile_data, **extracted_data}
+
+        # Convert complex lists (job_history, education, skills, certifications) back to JSON strings
+        # before storing in the single core_data_json field.
+        for key in ['job_history', 'education', 'skills', 'certifications']:
+            if key in merged_profile_data and isinstance(merged_profile_data[key], list):
+                merged_profile_data[key] = merged_profile_data[key]  # Keep as list for JSON.dumps
+
+        db_profile.core_data_json = json.dumps(merged_profile_data)
+        db.commit()
+        db.refresh(db_profile)
+
+        return {"message": "Resume uploaded and profile updated successfully!", "extracted_data": extracted_data}
+
+    except HTTPException:
+        raise  # Re-raise FastAPI HTTP exceptions
+    except Exception as e:
+        import traceback
+        traceback.print_exc()  # Print full traceback to console
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An unexpected error occurred during resume upload or processing: {str(e)}"
+        )

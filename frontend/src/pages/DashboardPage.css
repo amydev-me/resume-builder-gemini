@@ -1,0 +1,26 @@
+/* frontend/src/pages/DashboardPage.css */
+
+/* These are layout styles, which can eventually be Tailwind classes too */
+.dashboard-container {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    background-color: #f8f9fa; /* Light background */
+}
+
+/* Header styles are mostly in DashboardPage.js now with Tailwind */
+/* No need for .dashboard-header { ... } if using Tailwind classes in JSX */
+
+/* Main content area */
+/* No need for .dashboard-content { ... } if using Tailwind classes in JSX */
+
+/* Responsive adjustments */
+@media (max-width: 767px) {
+    .dashboard-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    .dashboard-header h1 {
+        margin-bottom: 10px;
+    }
+}

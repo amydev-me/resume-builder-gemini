@@ -296,7 +296,60 @@ class PromptManager:
         )
         return prompt
 
+    def generate_core_data_extraction_prompt(self, resume_text: str) -> str:
+        """
+        Generates a prompt to extract structured core data from a resume text.
+        """
+        prompt = f"""
+        You are an expert resume parser and data extractor. Your task is to extract key personal, experience, education, and skill information from the provided resume text.
+        Extract the following fields into a JSON object. If a field is not found, use an empty string for text fields, an empty list for list fields, or 0 for numeric fields.
 
+        **Output JSON structure (strictly follow this):**
+        ```json
+        {{
+            "full_name": "string",
+            "email": "string",
+            "phone": "string",
+            "linkedin": "string",
+            "years_of_experience": 0,
+            "job_history": [
+                {{
+                    "title": "string",
+                    "company": "string",
+                    "start_date": "YYYY-MM or YYYY",
+                    "end_date": "YYYY-MM or YYYY or 'Present'",
+                    "responsibilities": ["string", "string"]
+                }}
+            ],
+            "education": [
+                {{
+                    "degree": "string",
+                    "major": "string",
+                    "university": "string",
+                    "graduation_date": "YYYY-MM or YYYY"
+                }}
+            ],
+            "skills": ["string", "string"],
+            "certifications": ["string", "string"]
+        }}
+        ```
+
+        **Important Notes:**
+        - For `job_history`, extract 'title', 'company', 'start_date', 'end_date', and a concise list of 2-4 key 'responsibilities' for each role.
+        - For `education`, extract 'degree', 'major', 'university', and 'graduation_date'.
+        - `years_of_experience` should be an integer, estimated based on job history, or 0 if no experience.
+        - Ensure all lists (job_history, education, skills, certifications, responsibilities) are proper JSON arrays.
+        - Dates should be in "YYYY-MM" or "YYYY" format. For current roles, `end_date` should be "Present".
+        - Do not include any text or explanation outside the JSON object.
+
+        **Resume Text to Parse:**
+        ---
+        {resume_text}
+        ---
+
+        Extracted JSON:
+        """
+        return prompt
 # Example usage (for testing this module directly)
 if __name__ == "__main__":
     pm = PromptManager()
