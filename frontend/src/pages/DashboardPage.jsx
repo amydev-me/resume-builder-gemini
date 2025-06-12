@@ -2,7 +2,7 @@
 
 import React from 'react';
 // import { Outlet } from 'react-router-dom'; // Will be used when we add nested routes
-import './DashboardPage.css'; // Keep its dedicated CSS for the header/footer layout
+// import './DashboardPage.css'; // Keep its dedicated CSS for the header/footer layout
 
 function DashboardPage({ currentUser, onLogout, children }) {
     return (
@@ -18,7 +18,7 @@ function DashboardPage({ currentUser, onLogout, children }) {
                     </button>
                 </div>
             </header>
-            <main className="dashboard-content p-6 max-w-6xl mx-auto flex-grow"> {/* Added Tailwind classes */}
+            <main className="dashboard-content flex-grow flex flex-col"> {/* Added Tailwind classes */}
                 {children} {/* This will render the content passed from App.js */}
                 {/* When we add nested routes, we might use <Outlet /> here */}
             </main>

@@ -10,7 +10,8 @@ import {
   logoutUser,
   uploadResumeFile
 } from './services/api';
-
+import ReactMarkdown from 'react-markdown'; // NEW
+import remarkGfm from 'remark-gfm';       // NEW
 // NEW Imports for Router
 import { BrowserRouter as Router, Routes, Route, useNavigate } from 'react-router-dom';
 
@@ -25,6 +26,8 @@ import JobHistorySection from './sections/JobHistorySection'; // Import the new 
 import EducationSection from './sections/EducationSection'; // NEW
 import SkillsSection from './sections/SkillsSection';       // NEW
 import CertificationsSection from './sections/CertificationSection';
+import UserProfileCritique from './sections/UserProfileCritique'; // NEW
+import LearnedPreferencesSection from './sections/LearnedPreferencesSection'; // NEW
 // Main App Component (wrapped by Router later)
 function AppContent() {
   const [userProfile, setUserProfile] = useState(null);
@@ -36,7 +39,10 @@ function AppContent() {
 
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
-
+  const totalSteps = 5; // We defined 5 steps: Personal, Work, Education, Skills/Cert, Generation
+  const [uploadSuccess, setUploadSuccess] = useState(false); // NEW
+  const [uploadError, setUploadError] = useState(null);    // NEW
+  const [initialRequest, setInitialRequest] = useState(''); // NEW
   const [initialCoreData, setInitialCoreData] = useState({
     full_name: '',
     email: '',
@@ -51,12 +57,19 @@ function AppContent() {
 
   // ... inside useEffect for fetchUserProfile ...
   
+  const [currentStep, setCurrentStep] = useState(1); // Start at Step 1
 
   const fileInputRef = useRef(null);
   const [selectedFile, setSelectedFile] = useState(null);
 
   const navigate = useNavigate();
+  const nextStep = () => {
+    setCurrentStep(prev => Math.min(prev + 1, totalSteps));
+  };
 
+  const prevStep = () => {
+      setCurrentStep(prev => Math.max(prev - 1, 1));
+  };
   // Initial check for token on app load
   useEffect(() => {
     const token = localStorage.getItem('access_token');
@@ -332,125 +345,269 @@ function AppContent() {
       setLoading(false);
     }
   };
+  const handleAcceptCritique = () => {
+    console.log("Critique accepted. (Functionality to be implemented)");
+    // Logic to apply critique or simply acknowledge it
+};
+
+const handleUpdatePreference = (index, updatedPref) => {
+    console.log("Preference updated:", updatedPref);
+    // Logic to update a specific preference in userProfile.learned_preferences
+    // This would likely involve updating the userProfile state and saving to backend
+};
+
+const handleDeletePreference = (index) => {
+    console.log("Preference deleted at index:", index);
+    // Logic to delete a preference from userProfile.learned_preferences
+    // This would likely involve updating the userProfile state and saving to backend
+};
+
+const handleAddPreference = (newPref) => {
+    console.log("Preference added:", newPref);
+    // Logic to add a new preference to userProfile.learned_preferences
+    // This would likely involve updating the userProfile state and saving to backend
+};
+
 
   // The actual dashboard content, extracted to a render function for clarity
   const renderDashboardContent = () => (
-    <>
-      <div className="section">
-        <h2 className="text-2xl font-bold text-gray-800 mb-4">1. User Profile Setup</h2>
-        <p className="text-gray-600 mb-6">Edit your core data. Use valid JSON for lists.</p>
+    // Main container for the entire two-column layout
+    // flex-grow makes it take available space, min-h-screen ensures it pushes footer down
+    <div className="flex flex-col md:flex-row flex-grow min-h-[calc(100vh-64px)] bg-gray-50"> {/* min-h-screen to ensure it spans full height, minus header if fixed */}
 
-        <div className="resume-upload-section bg-gray-50 p-4 rounded-lg mb-6 border border-gray-200">
-            <h3 className="text-lg font-semibold text-gray-800 mb-3">Upload Your Resume (PDF/DOCX)</h3>
-            <input
-                type="file"
-                accept=".pdf,.docx"
-                onChange={handleFileChange}
-                ref={fileInputRef}
-                className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-            />
-            <button onClick={handleUploadResume} disabled={loading || !selectedFile} className="mt-4 bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded transition duration-300 ease-in-out">
-                Upload & Auto-Fill Profile
-            </button>
-            {selectedFile && <p className="mt-2 text-sm text-gray-600">Selected: {selectedFile.name}</p>}
-            <p className="text-sm text-gray-500 mt-2">
-                Upload a PDF or DOCX resume to automatically populate your profile fields below.
-            </p>
-        </div>
+        {/* Left Column: Input Forms with Stepper */}
+        <div className="w-full md:w-1/2 lg:w-1/2 p-6 overflow-y-auto border-r border-gray-200"> {/* Added overflow-y-auto for scrollability */}
+            <h2 className="text-3xl font-bold text-gray-900 mb-6 text-center">Resume Builder Dashboard</h2>
 
-        <div className="space-y-4">
-          <label className="block text-gray-700 font-medium">Full Name: <input type="text" name="full_name" value={initialCoreData.full_name} onChange={handleInitialDataChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50" /></label>
-          <label className="block text-gray-700 font-medium">Email: <input type="text" name="email" value={initialCoreData.email} onChange={handleInitialDataChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50" /></label>
-          <label className="block text-gray-700 font-medium">Phone: <input type="text" name="phone" value={initialCoreData.phone} onChange={handleInitialDataChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50" /></label>
-          <label className="block text-gray-700 font-medium">LinkedIn: <input type="text" name="linkedin" value={initialCoreData.linkedin} onChange={handleInitialDataChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50" /></label>
-          <label className="block text-gray-700 font-medium">Years of Experience: <input type="number" name="years_of_experience" value={initialCoreData.years_of_experience} onChange={handleInitialDataChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50" /></label>
-          <JobHistorySection
-            jobHistory={initialCoreData.job_history}
-            onJobHistoryChange={handleJobHistoryChange}
-          />
-        {/* NEW SECTIONS */}
-        <EducationSection
-            education={initialCoreData.education}
-            onEducationChange={handleEducationChange}
-          />
-          <SkillsSection
-            skills={initialCoreData.skills}
-            onSkillsChange={handleSkillsChange}
-          />
-          <CertificationsSection
-            certifications={initialCoreData.certifications}
-            onCertificationsChange={handleCertificationsChange}
-          />
-
-          <button onClick={handleSetupProfile} disabled={loading} className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded transition duration-300 ease-in-out">Update User Profile</button>
-        </div>
-        <h3 className="mt-6 text-xl font-semibold text-gray-800">Current Learned Preferences:</h3>
-        <pre className="bg-gray-100 p-4 rounded-md overflow-auto max-h-96 text-sm text-gray-700">{userProfile ? JSON.stringify(userProfile.learned_preferences, null, 2) : 'Loading...'}</pre>
-      </div>
-
-      <div className="section">
-        <h2 className="text-2xl font-bold text-gray-800 mb-4">2. Generate Resume</h2>
-        <div className="mb-4">
-          <label className="block mb-2 text-gray-700 font-medium">Target Job Description (Optional, for contextual generation):</label>
-          <textarea
-            value={targetJobDescription}
-            onChange={(e) => setTargetJobDescription(e.target.value)}
-            placeholder="Paste a job description here to tailor the resume to it. Example: 'Senior Software Engineer with expertise in AI and cloud platforms.'"
-            rows="5"
-            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
-          ></textarea>
-        </div>
-        <button onClick={handleGenerateResume} disabled={loading} className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded transition duration-300 ease-in-out">Generate New Resume</button>
-        <button onClick={handleGetSuggestions} disabled={loading} className="ml-4 bg-purple-500 hover:bg-purple-600 text-white font-bold py-2 px-4 rounded transition duration-300 ease-in-out">Get Proactive Suggestions</button>
-        {generatedResume && (
-          <div className="mt-6">
-            <h3 className="text-xl font-semibold text-gray-800 mb-2">Generated Resume: {generatedResume.version_name}</h3>
-            <pre className="bg-gray-100 p-4 rounded-md overflow-auto max-h-96 text-sm text-gray-700">{generatedResume.content}</pre>
-          </div>
-        )}
-        {generatedResume && generatedResume.critique && (
-            <div className="critique-results bg-yellow-100 border border-yellow-200 p-4 rounded-md mt-6">
-                <h3 className="text-lg font-semibold text-yellow-800">AI's Self-Critique: {generatedResume.critique.overall_assessment}</h3>
-                {generatedResume.critique.has_issues ? (
-                    <div className="mt-2">
-                        <p className="font-bold text-orange-700">Issues Identified:</p>
-                        <ul className="list-disc list-inside mt-2 space-y-1">
-                            {generatedResume.critique.issues.map((issue, index) => (
-                                <li key={index}>
-                                    <strong className="text-yellow-900">{issue.category} ({issue.severity}):</strong> {issue.description}
-                                    {issue.suggested_action && ` (Action: ${issue.suggested_action})`}
-                                    {issue.relevant_rule_id && ` (Rule ID: ${issue.relevant_rule_id})`}
-                                </li>
-                            ))}
-                        </ul>
+            {/* Stepper Navigation/Indicators */}
+            <div className="mb-8 p-4 bg-white rounded-lg shadow-md"> {/* Added background and shadow for stepper */}
+                <div className="flex justify-between items-center text-sm font-medium text-gray-600">
+                    {/* Step 1: Personal Information & Upload */}
+                    <div className={`flex flex-col items-center p-2 rounded-lg ${currentStep === 1 ? 'text-blue-600 font-bold' : ''}`}>
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center border-2 ${currentStep === 1 ? 'border-blue-600 bg-blue-100' : 'border-gray-300 bg-gray-100'}`}>
+                            <span className={currentStep === 1 ? 'text-blue-600' : 'text-gray-500'}>1</span>
+                        </div>
+                        <span className="mt-1 text-center text-xs sm:text-sm">Personal Info & Upload</span>
                     </div>
-                ) : (
-                    <p className="text-green-700 font-bold mt-2">No major issues identified in this draft.</p>
+                    <div className="flex-1 border-t-2 border-gray-200 -mt-8"></div> {/* Divider */}
+
+                    {/* Step 2: Work Experience */}
+                    <div className={`flex flex-col items-center p-2 rounded-lg ${currentStep === 2 ? 'text-blue-600 font-bold' : ''}`}>
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center border-2 ${currentStep === 2 ? 'border-blue-600 bg-blue-100' : 'border-gray-300 bg-gray-100'}`}>
+                            <span className={currentStep === 2 ? 'text-blue-600' : 'text-gray-500'}>2</span>
+                        </div>
+                        <span className="mt-1 text-center text-xs sm:text-sm">Work Experience</span>
+                    </div>
+                    <div className="flex-1 border-t-2 border-gray-200 -mt-8"></div> {/* Divider */}
+
+                    {/* Step 3: Education */}
+                    <div className={`flex flex-col items-center p-2 rounded-lg ${currentStep === 3 ? 'text-blue-600 font-bold' : ''}`}>
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center border-2 ${currentStep === 3 ? 'border-blue-600 bg-blue-100' : 'border-gray-300 bg-gray-100'}`}>
+                            <span className={currentStep === 3 ? 'text-blue-600' : 'text-gray-500'}>3</span>
+                        </div>
+                        <span className="mt-1 text-center text-xs sm:text-sm">Education</span>
+                    </div>
+                    <div className="flex-1 border-t-2 border-gray-200 -mt-8"></div> {/* Divider */}
+
+                    {/* Step 4: Skills & Certifications */}
+                    <div className={`flex flex-col items-center p-2 rounded-lg ${currentStep === 4 ? 'text-blue-600 font-bold' : ''}`}>
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center border-2 ${currentStep === 4 ? 'border-blue-600 bg-blue-100' : 'border-gray-300 bg-gray-100'}`}>
+                            <span className={currentStep === 4 ? 'text-blue-600' : 'text-gray-500'}>4</span>
+                        </div>
+                        <span className="mt-1 text-center text-xs sm:text-sm">Skills & Certs</span>
+                    </div>
+                    <div className="flex-1 border-t-2 border-gray-200 -mt-8"></div> {/* Divider */}
+
+                    {/* Step 5: Generate & Review */}
+                    <div className={`flex flex-col items-center p-2 rounded-lg ${currentStep === 5 ? 'text-blue-600 font-bold' : ''}`}>
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center border-2 ${currentStep === 5 ? 'border-blue-600 bg-blue-100' : 'border-gray-300 bg-gray-100'}`}>
+                            <span className={currentStep === 5 ? 'text-blue-600' : 'text-gray-500'}>5</span>
+                        </div>
+                        <span className="mt-1 text-center text-xs sm:text-sm">Generate & Review</span>
+                    </div>
+                </div>
+            </div>
+
+            {/* Content Area for each step */}
+            <div className="py-6 space-y-8"> {/* Added space-y-8 for consistent vertical spacing between sections */}
+                {/* Step 1: Personal Information & Upload */}
+                {currentStep === 1 && (
+                    <div className="bg-white p-6 rounded-lg shadow-md"> {/* Add card styling back for individual step sections */}
+                        <h3 className="text-2xl font-semibold text-gray-800 mb-4">1. Personal Information & Upload</h3>
+
+                        {/* Resume Upload section */}
+                        <div className="mb-6 bg-gray-50 p-4 rounded-md border border-gray-200">
+                            <h4 className="text-lg font-semibold text-gray-700 mb-2">Upload Existing Resume (Optional)</h4>
+                            <p className="text-sm text-gray-600 mb-3">Upload a PDF or DOCX resume to automatically populate your profile fields below.</p>
+                            <input type="file" onChange={handleFileChange} className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"/>
+                            <button onClick={handleUploadResume} disabled={!selectedFile || loading} className="mt-3 bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-md transition duration-300 ease-in-out disabled:opacity-50">
+                                {loading ? 'Uploading...' : 'Upload Resume'}
+                            </button>
+                            {uploadSuccess && <p className="text-green-600 text-sm mt-2">Resume uploaded successfully!</p>}
+                            {uploadError && <p className="text-red-600 text-sm mt-2">{uploadError}</p>}
+                        </div>
+
+                        {/* Personal Information Fields */}
+                        <div className="space-y-4">
+                            <label className="block text-gray-700 font-medium">Full Name: <input type="text" name="full_name" value={initialCoreData.full_name} onChange={handleInitialDataChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50" /></label>
+                            <label className="block text-gray-700 font-medium">Email: <input type="text" name="email" value={initialCoreData.email} onChange={handleInitialDataChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50" /></label>
+                            <label className="block text-gray-700 font-medium">Phone: <input type="text" name="phone" value={initialCoreData.phone} onChange={handleInitialDataChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-ring-indigo-200 focus:ring-opacity-50" /></label>
+                            <label className="block text-gray-700 font-medium">LinkedIn: <input type="text" name="linkedin" value={initialCoreData.linkedin} onChange={handleInitialDataChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50" /></label>
+                            <label className="block text-gray-700 font-medium">Years of Experience: <input type="number" name="years_of_experience" value={initialCoreData.years_of_experience} onChange={handleInitialDataChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50" /></label>
+                        </div>
+                    </div>
+                )}
+
+                {/* Step 2: Work Experience */}
+                {currentStep === 2 && (
+                    <div className="bg-white p-6 rounded-lg shadow-md"> {/* Add card styling */}
+                        <h3 className="text-2xl font-semibold text-gray-800 mb-4">2. Work Experience</h3>
+                        <JobHistorySection
+                            jobHistory={initialCoreData.job_history}
+                            onJobHistoryChange={handleJobHistoryChange}
+                        />
+                    </div>
+                )}
+
+                {/* Step 3: Education */}
+                {currentStep === 3 && (
+                    <div className="bg-white p-6 rounded-lg shadow-md"> {/* Add card styling */}
+                        <h3 className="text-2xl font-semibold text-gray-800 mb-4">3. Education</h3>
+                        <EducationSection
+                            education={initialCoreData.education}
+                            onEducationChange={handleEducationChange}
+                        />
+                    </div>
+                )}
+
+                {/* Step 4: Skills & Certifications */}
+                {currentStep === 4 && (
+                    <div className="bg-white p-6 rounded-lg shadow-md"> {/* Add card styling */}
+                        <h3 className="text-2xl font-semibold text-gray-800 mb-4">4. Skills & Certifications</h3>
+                        <SkillsSection
+                            skills={initialCoreData.skills}
+                            onSkillsChange={handleSkillsChange}
+                        />
+                        <div className="mt-8"> {/* Keep mt-8 for separation between Skills and Certs */}
+                            <CertificationsSection
+                                certifications={initialCoreData.certifications}
+                                onCertificationsChange={handleCertificationsChange}
+                            />
+                        </div>
+                    </div>
+                )}
+
+                {/* Step 5: Generate Resume & Review */}
+                {currentStep === 5 && (
+                    <div className="bg-white p-6 rounded-lg shadow-md"> {/* Add card styling */}
+                        <h3 className="text-2xl font-semibold text-gray-800 mb-4">5. Generate & Review Resume</h3>
+
+                        {/* Target Job Description & Initial Request */}
+                        <div className="mb-6 bg-gray-50 p-4 rounded-md border border-gray-200">
+                            <h4 className="text-lg font-semibold text-gray-700 mb-2">Resume Customization</h4>
+                            <label className="block text-gray-700 font-medium mb-4">
+                                Target Job Description (Optional):
+                                <textarea
+                                    value={targetJobDescription}
+                                    onChange={(e) => setTargetJobDescription(e.target.value)}
+                                    rows="4"
+                                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
+                                    placeholder="Paste the job description here to tailor your resume."
+                                ></textarea>
+                            </label>
+                            <label className="block text-gray-700 font-medium">
+                                Specific Instructions / Initial Request (Optional):
+                                <textarea
+                                    value={initialRequest}
+                                    onChange={(e) => setInitialRequest(e.target.value)}
+                                    rows="2"
+                                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
+                                    placeholder="e.g., 'Make it concise', 'Focus on leadership skills'."
+                                ></textarea>
+                            </label>
+                        </div>
+
+                         {/* === RE-ADDED: AI Suggestions / Learned Preferences & Critique === */}
+                    <div className="mb-6 bg-gray-50 p-4 rounded-lg shadow-md"> {/* Added styling for a distinct card */}
+                        <h4 className="text-xl font-semibold text-gray-800 mb-4">AI Feedback & Preferences</h4>
+
+                        {/* User Profile Critique Section */}
+                        <div className="mb-6"> {/* Margin below this section */}
+                            {userProfile && (
+                                <UserProfileCritique
+                                    critique={userProfile.critique}
+                                    onAcceptCritique={handleAcceptCritique} // You'll need to define this function in App.js
+                                />
+                            )}
+                        </div>
+
+                        {/* Learned Preferences Section */}
+                        {userProfile && (
+                            <LearnedPreferencesSection
+                                learnedPreferences={userProfile.learned_preferences || []}
+                                onUpdatePreference={handleUpdatePreference} // You'll need to define this function in App.js
+                                onDeletePreference={handleDeletePreference} // You'll need to define this function in App.js
+                                onAddPreference={handleAddPreference}     // You'll need to define this function in App.js
+                            />
+                        )}
+                    </div>
+                    {/* === END RE-ADDED === */}
+
+                        {/* Generate Resume Button */}
+                        <div className="text-center mb-6">
+                            <button onClick={handleGenerateResume} disabled={loading} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-8 rounded-md text-lg transition duration-300 ease-in-out disabled:opacity-50">
+                                {loading ? 'Generating...' : 'Generate Resume'}
+                            </button>
+                        </div>
+                    </div>
                 )}
             </div>
-        )}
-      </div>
 
-      {generatedResume && (
-        <div className="section">
-          <h2 className="text-2xl font-bold text-gray-800 mb-4">3. Provide Feedback</h2>
-          <textarea
-            value={feedbackText}
-            onChange={(e) => setFeedbackText(e.target.value)}
-            placeholder="e.g., 'Make the summary more concise', 'Use stronger action verbs for experience section'. If related to JD, mention it here."
-            rows="4"
-            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
-          ></textarea>
-          <button onClick={handleSubmitFeedback} disabled={loading} className="mt-4 bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-2 px-4 rounded transition duration-300 ease-in-out">Submit Feedback</button>
+            {/* Navigation Buttons - Placed at the bottom of the left column */}
+            <div className="flex justify-between mt-8 p-4 bg-gray-100 rounded-lg shadow-inner sticky bottom-0"> {/* Sticky at bottom of scrollable area */}
+                {currentStep > 1 && (
+                    <button onClick={prevStep} className="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded-md transition duration-300 ease-in-out">
+                        &larr; Previous
+                    </button>
+                )}
+                {currentStep < totalSteps && (
+                    <button onClick={nextStep} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md transition duration-300 ease-in-out">
+                        Next &rarr;
+                    </button>
+                )}
+                {currentStep === totalSteps && (
+                    <button onClick={handleSetupProfile} disabled={loading} className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-md transition duration-300 ease-in-out">
+                        Save All Profile Data
+                    </button>
+                )}
+            </div>
         </div>
-      )}
 
-      <p className="text-gray-600 text-sm mt-6 mb-4">
-        **Note:** To see the effect of feedback, submit feedback, then click "Generate New Resume" again.
-        The system should apply your new preferences.
-      </p>
-    </>
-  );
+        {/* Right Column: Resume Preview */}
+        <div className="w-full md:w-1/2 lg:w-1/2 p-6 bg-white shadow-lg rounded-lg m-6 md:m-0 md:ml-6 overflow-y-auto min-h-[calc(100vh-64px)]"> {/* Added styling and overflow-y-auto */}
+            <h3 className="text-2xl font-semibold text-gray-800 mb-4 text-center">Resume Preview</h3>
+            <div className="markdown-resume-display border border-gray-300 rounded-md bg-gray-50 p-4"> {/* Removed max-h, added p-4 for inner spacing */}
+                {generatedResume ? (
+                    <div className="prose prose-blue max-w-none">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {generatedResume.content}
+                    </ReactMarkdown>
+                  </div>
+                ) : (
+                    <p className="text-gray-500 italic text-center">Generate your resume to see it here.</p>
+                )}
+            </div>
+            {/* Optional: Add a "Download PDF" or "Customize" button here for the preview */}
+            {generatedResume && (
+                <div className="text-center mt-4">
+                    <button className="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-md transition duration-300 ease-in-out">
+                        Download PDF
+                    </button>
+                </div>
+            )}
+        </div>
+    </div>
+);
 
   return (
     <div className="App">
