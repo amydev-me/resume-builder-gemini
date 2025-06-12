@@ -26,8 +26,6 @@ import JobHistorySection from './sections/JobHistorySection'; // Import the new 
 import EducationSection from './sections/EducationSection'; // NEW
 import SkillsSection from './sections/SkillsSection';       // NEW
 import CertificationsSection from './sections/CertificationSection';
-import UserProfileCritique from './sections/UserProfileCritique'; // NEW
-import LearnedPreferencesSection from './sections/LearnedPreferencesSection'; // NEW
 // Main App Component (wrapped by Router later)
 function AppContent() {
   const [userProfile, setUserProfile] = useState(null);
@@ -345,29 +343,6 @@ function AppContent() {
       setLoading(false);
     }
   };
-  const handleAcceptCritique = () => {
-    console.log("Critique accepted. (Functionality to be implemented)");
-    // Logic to apply critique or simply acknowledge it
-};
-
-const handleUpdatePreference = (index, updatedPref) => {
-    console.log("Preference updated:", updatedPref);
-    // Logic to update a specific preference in userProfile.learned_preferences
-    // This would likely involve updating the userProfile state and saving to backend
-};
-
-const handleDeletePreference = (index) => {
-    console.log("Preference deleted at index:", index);
-    // Logic to delete a preference from userProfile.learned_preferences
-    // This would likely involve updating the userProfile state and saving to backend
-};
-
-const handleAddPreference = (newPref) => {
-    console.log("Preference added:", newPref);
-    // Logic to add a new preference to userProfile.learned_preferences
-    // This would likely involve updating the userProfile state and saving to backend
-};
-
 
   // The actual dashboard content, extracted to a render function for clarity
   const renderDashboardContent = () => (
@@ -527,31 +502,7 @@ const handleAddPreference = (newPref) => {
                             </label>
                         </div>
 
-                         {/* === RE-ADDED: AI Suggestions / Learned Preferences & Critique === */}
-                    <div className="mb-6 bg-gray-50 p-4 rounded-lg shadow-md"> {/* Added styling for a distinct card */}
-                        <h4 className="text-xl font-semibold text-gray-800 mb-4">AI Feedback & Preferences</h4>
-
-                        {/* User Profile Critique Section */}
-                        <div className="mb-6"> {/* Margin below this section */}
-                            {userProfile && (
-                                <UserProfileCritique
-                                    critique={userProfile.critique}
-                                    onAcceptCritique={handleAcceptCritique} // You'll need to define this function in App.js
-                                />
-                            )}
-                        </div>
-
-                        {/* Learned Preferences Section */}
-                        {userProfile && (
-                            <LearnedPreferencesSection
-                                learnedPreferences={userProfile.learned_preferences || []}
-                                onUpdatePreference={handleUpdatePreference} // You'll need to define this function in App.js
-                                onDeletePreference={handleDeletePreference} // You'll need to define this function in App.js
-                                onAddPreference={handleAddPreference}     // You'll need to define this function in App.js
-                            />
-                        )}
-                    </div>
-                    {/* === END RE-ADDED === */}
+                         
 
                         {/* Generate Resume Button */}
                         <div className="text-center mb-6">
