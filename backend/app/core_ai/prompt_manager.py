@@ -358,7 +358,6 @@ class PromptManager:
         )
         return prompt
 
-
     def generate_refinement_prompt(self, previous_resume_content: str, critiques: List[Dict[str, Any]],
                                    user_core_data: Dict[str, Any], learned_preferences: List[Dict[str, Any]],
                                    target_job_description: Optional[str] = None) -> str:
@@ -372,36 +371,53 @@ class PromptManager:
         prompt = (
             "You are an expert resume writer and AI assistant tasked with refining a resume. "
             "You have been provided with a previous version of a resume and a list of specific critiques. "
-            "Your goal is to address *all* the critiques and generate a *new, improved version* of the resume. "
+            "Your goal is to address *all* the critiques and generate a *new, significantly improved version* of the resume. "
             "Ensure the refined resume still adheres to all original instructions, core data, and learned preferences.\n\n"
+            "**Strictly follow these refinement rules:**\n"
+            "-   Do NOT just rephrase. Actively implement the 'suggested_action' for each critique.\n"
+            "-   For 'Quantification' issues, add specific, plausible numbers, percentages, or monetary values. DO NOT use placeholders like 'X%'.\n"
+            "-   For 'Generic Phrases' issues, replace the identified phrases with strong, specific, and impactful action verbs and descriptive language.\n"
+            "-   For 'Impact vs. Responsibility' issues, rewrite the bullet point to clearly demonstrate the *result* or *outcome* of the action, using the STAR/PAR method.\n"
+            "-   For 'ATS/JD Relevance' issues, aggressively integrate keywords and rephrase content from the resume to directly match the target job description. Prioritize JD relevance.\n"
+            "-   For 'Conciseness' issues, shorten sentences and paragraphs without losing critical information, focusing on impact.\n"
+            "-   For 'Action Verbs' issues, ensure every bullet point starts with a powerful and distinct action verb.\n"
+            "-   Maintain the overall professional and concise tone. Avoid any conversational text in the final output.\n\n"
         )
 
-        prompt += "**Previous Resume Version:**\n```\n"
+        prompt += "**Previous Resume Version (to be refined):**\n```\n"
         prompt += previous_resume_content
         prompt += "\n```\n\n"
 
-        prompt += "**Critiques to Address:**\n```json\n"
-        prompt += critiques_json
-        prompt += "\n```\n\n"
+        prompt += "**Critiques to Address (MANDATORY TO FIX EACH):**\n"
+        # Iterate through critiques to make them more prominent and actionable
+        for i, critique_item in enumerate(critiques):
+            prompt += f"- **Issue {i + 1}: {critique_item.get('category')} ({critique_item.get('severity')})**\n"
+            prompt += f"  **Description:** {critique_item.get('description')}\n"
+            if critique_item.get('suggested_action'):
+                prompt += f"  **Action Required:** {critique_item.get('suggested_action')}\n"
+            if critique_item.get('relevant_rule_id'):
+                prompt += f"  (Related Rule ID: {critique_item.get('relevant_rule_id')})\n"
+            prompt += "\n"  # Add a newline for readability between critiques
 
         prompt += (
-            "**Original User Core Data (for reference on content):**\n```json\n"
+            "**Original User Core Data (for reference on factual content - adhere strictly to this data):**\n```json\n"
             f"{core_data_json}\n```\n\n"
         )
         prompt += (
-            "**Original Learned Preferences (Rules to still enforce):**\n```json\n"
+            "**Original Learned Preferences (Rules to still enforce - ensure the refined resume respects these):**\n```json\n"
             f"{preferences_json}\n```\n\n"
         )
 
         if target_job_description:
             prompt += (
-                "**Original Target Job Description (for continued tailoring):**\n```\n"
+                "**Original Target Job Description (for continued tailoring - this is paramount):**\n```\n"
                 f"{target_job_description}\n```\n\n"
             )
 
         prompt += (
-            "Generate the complete, refined resume. Focus exclusively on fixing the identified issues. "
-            "Ensure the output is a professional, markdown-formatted resume and contains no conversational text outside the resume content itself."
+            "**Generate the complete, REFINED resume in Markdown format.** "
+            "Ensure all identified issues from the 'Critiques to Address' section have been concretely fixed. "
+            "The output must be ONLY the resume content, with no introductory or conversational text."
         )
         return prompt
 
