@@ -304,14 +304,23 @@ class PromptManager:
         preferences_json = json.dumps(learned_preferences, indent=2)
 
         prompt = (
-            "You are an expert resume reviewer and AI assistant. Your task is to critically analyze a generated resume "
-            "against specific guidelines and a target job description (if provided). "
-            "Identify any areas where the resume deviates from the instructions or could be improved.\n\n"
+            "You are an expert resume reviewer and highly critical AI assistant. Your task is to perform a rigorous quality assurance check on the provided resume draft against best practices, the candidate's core data, and the target job description (if provided). **Your critique must be extremely specific, actionable, and focus on the quantitative and relevance aspects.**\n\n"
         )
 
         prompt += "**Resume to Critique:**\n```\n"
         prompt += resume_draft  # Use resume_draft here
         prompt += "\n```\n\n"
+
+        prompt += (
+            "**Specific Areas to Rigorously Check:**\n"
+            "-   **Quantification:** Is every achievement in the experience section quantified with a number, percentage, or measurable outcome? If not, identify *exactly which bullet points* lack quantification and suggest specific, plausible numbers to add.\n"
+            "-   **Generic Phrases:** Are any of the forbidden generic phrases present (e.g., 'leveraged', 'utilized', 'results-driven')? List them specifically.\n"
+            "-   **ATS/JD Relevance:** How well does the resume integrate keywords and concepts from the Target Job Description? Point out specific instances where better keyword integration or rephrasing for relevance is needed.\n"
+            "-   **Impact vs. Responsibility:** Does each bullet point focus on the *impact* and *achievement* rather than just a *responsibility*? Identify bullet points that read too much like a job description.\n"
+            "-   **Conciseness:** Is any section unnecessarily verbose? Suggest specific areas for shortening.\n"
+            "-   **Action Verbs:** Does every bullet point start with a strong action verb?\n"
+            "-   **Coherence & Flow:** Does the resume tell a clear, compelling story? Are there any logical gaps?\n\n"
+        )
 
         if learned_preferences:
             prompt += "**Learned Preferences (Rules to enforce):**\n```json\n"
@@ -334,7 +343,7 @@ class PromptManager:
             f"{{\n"
             f"  \"issues\": [\n"
             f"    {{\n"
-            f"      \"category\": \"Rule Violation\" | \"Stylistic\" | \"Content Gap\" | \"Target JD Mismatch\" | \"Best Practice\" | \"Other\",\n"
+            f"      \"category\": \"Rule Violation\" | \"Stylistic\" | \"Content Gap\" | \"Target JD Mismatch\" | \"Best Practice\" | \"Other\" | \"Quantification\" | \"Impact vs. Responsibility\" | \"Generic Phrases\" | \"Action Verbs\" | \"Conciseness\" | \"ATS/JD Relevance\",\n"  # Ensure ALL categories are here
             f"      \"description\": \"Specific description of the issue, e.g., 'Summary is too long; needs to be under 3 sentences.'\",\n"
             f"      \"severity\": \"low\" | \"medium\" | \"high\",\n"
             f"      \"relevant_rule_id\": \"Optional: ID of the rule if applicable\",\n"
@@ -345,7 +354,7 @@ class PromptManager:
             f"  \"has_issues\": true | false\n"
             f"}}\n"
             f"```\n\n"
-            "If no issues are found, the `issues` list should be empty and `has_issues` should be `false`."
+            "If no issues are found, the `issues` list should be empty and `has_issues` should be `false`. **STRICTLY ADHERE TO THE SPECIFIED CATEGORY VALUES ONLY.**"
         )
         return prompt
 
