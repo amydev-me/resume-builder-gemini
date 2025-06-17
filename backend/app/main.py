@@ -2,10 +2,11 @@ import os
 import uuid
 import json
 from pathlib import Path
+import re
 
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 
 from fastapi import FastAPI, HTTPException, Depends, status, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware # Import CORSMiddleware
@@ -370,6 +371,107 @@ async def setup_user_profile(
 # Modify `submit_feedback` to use the database and current_user
 
 # Modify `generate_resume` to use the database for data and associate resume with user
+
+def clean_core_data_for_llm(core_data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Cleans and pre-processes core_data to remove or modify generic placeholders
+    before sending to the LLM.
+    """
+    cleaned_data = core_data.copy()
+
+    # Define common placeholder patterns
+    placeholder_patterns = [
+        r"placeholder\s*role", r"placeholder\s*company", r"n/a", r"not\s*applicable",
+        r"example\s*job", r"test\s*role", r"job\s*title\s*\d+", r"company\s*name\s*\d+",
+        r"description\s*of\s*responsibilities", r"lorem\s*ipsum", r"your\s*role",
+        r"your\s*company", r"no\s*responsibilities\s*provided"
+    ]
+    # Compile regex for efficiency
+    compiled_patterns = [re.compile(pattern, re.IGNORECASE) for pattern in placeholder_patterns]
+
+    def is_placeholder(text: str) -> bool:
+        if not text or not text.strip():
+            return True
+        for pattern in compiled_patterns:
+            if pattern.search(text):
+                return True
+        return False
+
+    # Clean Job History
+    if 'job_history' in cleaned_data and isinstance(cleaned_data['job_history'], list):
+        filtered_job_history = []
+        for job in cleaned_data['job_history']:
+            clean_job = job.copy()
+            # Check title and company - if both are placeholders, skip the job
+            if is_placeholder(clean_job.get('title', '')) and is_placeholder(clean_job.get('company', '')):
+                continue
+
+            # Clean individual fields within the job
+            if is_placeholder(clean_job.get('title', '')):
+                clean_job['title'] = "Experienced Professional" # Generic but not a placeholder
+            if is_placeholder(clean_job.get('company', '')):
+                clean_job['company'] = "Undisclosed Company" # Generic but not a placeholder
+
+            if 'responsibilities' in clean_job and isinstance(clean_job['responsibilities'], list):
+                # Filter out placeholder responsibilities
+                clean_job['responsibilities'] = [
+                    resp for resp in clean_job['responsibilities'] if not is_placeholder(resp)
+                ]
+                # If all responsibilities were placeholders, add a default
+                if not clean_job['responsibilities']:
+                    clean_job['responsibilities'] = ["Managed key projects and delivered impactful results."] # Provide a generic for LLM to expand
+
+            filtered_job_history.append(clean_job)
+        cleaned_data['job_history'] = filtered_job_history
+        # If no valid jobs remain, signal this to the LLM later
+        if not filtered_job_history:
+            cleaned_data['has_meaningful_job_history'] = False
+        else:
+            cleaned_data['has_meaningful_job_history'] = True
+
+
+    # Clean Education
+    if 'education' in cleaned_data and isinstance(cleaned_data['education'], list):
+        filtered_education = []
+        for edu in cleaned_data['education']:
+            clean_edu = edu.copy()
+            if is_placeholder(clean_edu.get('degree', '')) and is_placeholder(clean_edu.get('institution', '')):
+                continue
+            if is_placeholder(clean_edu.get('degree', '')): clean_edu['degree'] = "Degree/Certification"
+            if is_placeholder(clean_edu.get('institution', '')): clean_edu['institution'] = "Reputable Institution"
+            filtered_education.append(clean_edu)
+        cleaned_data['education'] = filtered_education
+
+    # Clean Skills
+    if 'skills' in cleaned_data and isinstance(cleaned_data['skills'], list):
+        cleaned_data['skills'] = [skill for skill in cleaned_data['skills'] if not is_placeholder(skill)]
+        if not cleaned_data['skills']:
+            cleaned_data['skills'] = ["Problem Solving", "Communication", "Teamwork"] # Default skills
+
+    # Clean Certifications
+    if 'certifications' in cleaned_data and isinstance(cleaned_data['certifications'], list):
+        cleaned_data['certifications'] = [cert for cert in cleaned_data['certifications'] if not is_placeholder(cert)]
+
+    # Clean Projects
+    if 'projects' in cleaned_data and isinstance(cleaned_data['projects'], list):
+        filtered_projects = []
+        for proj in cleaned_data['projects']:
+            if isinstance(proj, dict) and not is_placeholder(proj.get('name', '')):
+                if is_placeholder(proj.get('description', '')):
+                    proj['description'] = "Successfully completed a significant project."
+                filtered_projects.append(proj)
+        cleaned_data['projects'] = filtered_projects
+
+
+    # Add a flag if core data seems very sparse/placeholder-filled overall
+    if not cleaned_data.get('full_name') or is_placeholder(cleaned_data.get('full_name', '')):
+        cleaned_data['full_name'] = "Valued Candidate"
+    if not cleaned_data.get('email') or is_placeholder(cleaned_data.get('email', '')):
+        cleaned_data['email'] = "contact@example.com"
+
+
+    return cleaned_data
+
 @app.post("/generate-resume/", response_model=ResumeContentResponse)
 async def generate_resume(
         request: GenerateResumeRequest,
@@ -383,6 +485,9 @@ async def generate_resume(
         # Load user profile and learned preferences from the database for the current_user
         db_profile = db.query(models.UserProfile).filter(models.UserProfile.owner_id == current_user.id).first()
         core_data = json.loads(db_profile.core_data_json) if db_profile and db_profile.core_data_json else {}
+
+        cleaned_core_data = clean_core_data_for_llm(core_data)
+
 
         db_preferences = db.query(models.LearnedPreference).filter(
             models.LearnedPreference.owner_id == current_user.id).all()
@@ -400,12 +505,12 @@ async def generate_resume(
             if iteration == 0:
                 print("Generating initial resume draft...")
                 resume_prompt = prompt_manager.generate_resume_prompt(
-                    user_core_data=core_data,
+                    user_core_data=cleaned_core_data,
                     learned_preferences=learned_preferences,
                     initial_request=request.initial_prompt,
                     target_job_description=request.target_job_description
                 )
-                raw_generated_content = llm_client.generate_text(resume_prompt, temperature=0.7)
+                raw_generated_content = llm_client.generate_text(resume_prompt, temperature=0.8)
                 current_version_name = f"Resume Draft {datetime.now().strftime('%Y-%m-%d %H:%M')}"
             else:
                 if not final_critique_results or not final_critique_results.has_issues:
@@ -415,7 +520,7 @@ async def generate_resume(
                 refinement_prompt = prompt_manager.generate_refinement_prompt(
                     previous_resume_content=current_resume_draft,
                     critiques=[c.model_dump() for c in final_critique_results.issues],
-                    user_core_data=core_data,
+                    user_core_data=cleaned_core_data,
                     learned_preferences=learned_preferences,
                     target_job_description=request.target_job_description
                 )

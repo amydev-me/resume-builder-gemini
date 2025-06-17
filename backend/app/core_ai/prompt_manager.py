@@ -1,15 +1,35 @@
-from typing import Dict, Any, List,  Optional
-import json # Ensure json is imported
+from typing import Dict, Any, List, Optional
+import json  # Ensure json is imported
 
 
 class PromptManager:
     def __init__(self):
         # Base instructions for the LLM
         self.base_instructions = (
-            "You are an expert resume writer and career coach. Your goal is to create highly effective, "
-            "professional, and concise resume content. Always maintain a professional tone. "
-            "Focus on achievements, quantification, and relevant skills. Avoid jargon where possible. "
-            "Respond only with the resume content, no conversational filler. Format the resume clearly with distinct sections (e.g., Summary, Experience, Education, Skills)."
+            """
+                You are an AI-powered Senior Resume Writer and Applicant Tracking System (ATS) Optimization Specialist. Your mission is to craft a highly tailored, professional, and impactful resume in Markdown format.
+
+                Adhere strictly to the following core guidelines for ALL resume sections:
+                1.  **Professional & Unique Tone (AVOID GENERICS):** Use formal, concise, and compelling language. **ABSOLUTELY DO NOT use overused, generic, or 'AI-sounding' phrases.** This includes, but is not limited to: 'leveraged', 'utilized', 'synergistic', 'paradigm shift', 'cutting-edge', 'state-of-the-art', 'robust solution', 'driving force', 'proven track record', 'results-driven', 'responsible for', 'played a key role in', 'spearheaded'. Find more descriptive, unique, and powerful alternatives. Vary sentence structure and vocabulary to ensure the resume stands out with human-like prose.
+                2.  **Action Verbs:** Start EVERY bullet point in the 'Work Experience' and 'Projects' sections with a strong, quantifiable action verb (e.g., "Developed," "Managed," "Implemented," "Achieved," "Optimized," "Reduced," "Increased," "Streamlined," "Led," "Pioneered").
+                3.  **Quantify Achievements (CRITICAL):** For each achievement, **mandatorily quantify the impact with specific numbers, percentages, financial values, or time savings (e.g., 'Increased sales by 15%', 'Reduced operational costs by $10K', 'Managed a team of 5 engineers', 'Streamlined data processing, saving 10 hours/week')**. If exact numbers are NOT provided in the user's data for a responsibility, **you MUST infer plausible, industry-standard, and impactful numerical outcomes that are common for that type of role and industry.** Do not use placeholders like 'X%' or 'Y dollars'. Make these inferred numbers sound concrete and realistic. Focus on 'Problem-Action-Result' (PAR) or 'Situation-Task-Action-Result' (STAR) methodology.
+                4.  **ATS Optimization & Relevance (PRIMARY FOCUS if JD Provided):**
+                    * Analyze the provided TARGET JOB DESCRIPTION thoroughly.
+                    * Seamlessly integrate key skills, responsibilities, and keywords from the JD into the resume, particularly in the summary, skills, and experience sections. This must feel natural and not 'stuffed'.
+                    * **Prioritize and reframe** information from the candidate's profile that directly aligns with the target job description. Rephrase existing bullet points from the candidate's work history to emphasize relevant skills and achievements for this specific role.
+                    * If the job description mentions specific tools or technologies, ensure they are prominently highlighted if present in the candidate's skills/experience.
+                5.  **Conciseness & Length:** Aim for a 1-2 page resume. Be concise and impactful. Every word should add value.
+                6.  **Formatting:** Use clear Markdown headings (e.g., `##` for main sections, `###` for sub-sections like job titles). Use bullet points for lists. Ensure clean, professional spacing and readability.
+
+                **Resume Structure:**
+                * **Contact Information:** Full Name, Phone, Email, LinkedIn (if provided).
+                * **Summary/Objective:** A concise (3-5 sentences) powerful paragraph tailored *specifically* to the target job description and highlighting the candidate's unique value proposition and career goals.
+                * **Skills:** Categorized (e.g., Technical Skills, Soft Skills, Tools, Languages) and highly relevant to the JD.
+                * **Work Experience:** Reverse chronological order. For each role: Job Title, Company, Dates (Month Year - Month Year or Present). Use 3-5 concise, achievement-oriented bullet points per role. Expand on provided responsibilities with inferred impact and outcomes if not explicit.
+                * **Education:** Reverse chronological. Degree, Major, University, Graduation Date. Include relevant coursework, honors, or significant projects if impactful.
+                * **Certifications/Awards (Optional):** List relevant certifications or notable awards.
+                * **Projects (Optional):** If provided, describe relevant projects with their impact, technologies used, and outcomes.
+                """
         )
 
     def generate_resume_prompt(self, user_core_data: Dict[str, Any], learned_preferences: List[Dict[str, Any]],
@@ -32,63 +52,114 @@ class PromptManager:
             prompt_parts.append(f"- Total Years of Experience: {user_core_data['years_of_experience']} years")
 
         # --- Job History Section ---
-        if user_core_data.get('job_history'):
+        # Ensure job_history is a list before processing
+        if user_core_data.get('job_history') and isinstance(user_core_data['job_history'], list):
             prompt_parts.append("\n- **Work Experience:**")
-            # Sort jobs in reverse chronological order based on dates
-            sorted_jobs = sorted(user_core_data['job_history'], key=lambda x: x.get('dates', ''), reverse=True)
+            # Sort jobs in reverse chronological order based on start_date
+            # Use '9999-01' as a very late date string to ensure jobs without start_date are pushed to the end
+            # when sorting in reverse (latest first).
+            sorted_jobs = sorted(user_core_data['job_history'], key=lambda x: x.get('start_date', '9999-01'),
+                                 reverse=True)
 
             for job in sorted_jobs:
-                title = job.get('title', '')
-                company = job.get('company', '')
-                location = job.get('location', '')
-                dates = job.get('dates', '')
-                responsibilities = job.get('responsibilities', '')  # This is your raw input line(s)
+                title = job.get('title', 'N/A')
+                company = job.get('company', 'N/A')
+                # Assuming location is not collected from frontend, you might remove this or infer from company
+                # For now, keep it as empty if not provided.
+                location = job.get('location', '')  # Your frontend does not collect 'location'
+
+                start_date = job.get('start_date', '')
+                end_date = job.get('end_date', 'Present')  # Default to 'Present' if end_date is not provided
+                dates_str = f"{start_date} - {end_date}" if start_date else ""
+
+                # Ensure responsibilities is a list, then join with newlines for the prompt
+                responsibilities_list = job.get('responsibilities', [])
+                if not isinstance(responsibilities_list, list):  # Fallback if for some reason it's not a list
+                    responsibilities_list = [str(responsibilities_list)]  # Convert to list with single string
+                responsibilities_prompt = "\n".join(
+                    responsibilities_list) if responsibilities_list else "No responsibilities provided."
 
                 prompt_parts.append(
-                    f"\n  * **{title}** at {company} | {location} | {dates}\n"
-                    f"    Based on the following core responsibilities provided, **expand each into 3-5 impactful, quantified bullet points**. "
-                    f"Focus on the 'Problem-Action-Result' (PAR) or 'Situation-Task-Action-Result' (STAR) methodology. "
-                    f"**Elaborate on technical challenges, solutions, and measurable outcomes.** "
-                    f"If the input is generic or concise, **infer and add relevant details, common tasks, and achievements for such roles** (e.g., for a Full Stack Engineer (AI), think about data integration, API development, performance optimization, model deployment, and collaboration with cross-functional teams). "
-                    f"Ensure each bullet point starts with a strong action verb.\n"
-                    f"    **Core Responsibilities for Expansion (Analyze these):**\n"
+                    f"\n  * **{title}** at {company} | {dates_str}\n"
+                    f"    **Expand the following core responsibilities into 3-5 distinct, highly impactful, and MANDATORILY QUANTIFIED bullet points.** Each bullet point MUST start with a strong action verb and explicitly state a measurable outcome. **If the input is generic or lacks specific numbers, you are required to INFER plausible, industry-standard numerical achievements that would be typical for this role and industry.** For example, if 'Managed projects' is given, infer 'Managed 5 complex software projects, delivering 90% on-time and 10% under budget, leading to 15% improvement in team efficiency.' Focus on 'Problem-Action-Result' (PAR) or 'Situation-Task-Action-Result' (STAR) methodology. Prioritize impact and quantify every statement."
+                    f"    **Core Responsibilities for Expansion:**\n"
                     f"    ```\n"
-                    f"    {responsibilities}\n"  # The AI will read and expand upon this
+                    f"    {responsibilities_prompt}\n"
                     f"    ```\n"
-                    f"    **Generated Detailed Bullet Points (aim for 3-5 comprehensive points):**"
-                    # This is where the AI will write
+                    f"    **Generated Detailed Bullet Points (3-5 points):**"
+                    # Changed to make it clearer for the LLM what to output
                 )
+        else:
+            prompt_parts.append("\n- **Work Experience:** No work experience provided.")
 
-        if user_core_data.get('education'):
+        # --- Education Section ---
+        # Ensure education is a list before processing
+        if user_core_data.get('education') and isinstance(user_core_data['education'], list):
             prompt_parts.append("\n- Education:")
-
             for edu in user_core_data['education']:
-                prompt_parts.append(
-                    f"  * {edu.get('degree', '')} in {edu.get('major', '')} from {edu.get('institution', '')} ({edu.get('dates', '')})")
+                degree = edu.get('degree', 'N/A')
+                institution = edu.get('institution', 'N/A')
+                field_of_study = edu.get('field_of_study', '')  # Using field_of_study from frontend
+                start_date = edu.get('start_date', '')
+                end_date = edu.get('end_date', 'Present')  # Default to 'Present' if end_date is not provided
+                edu_dates_str = f"({start_date} - {end_date})" if start_date else ""
+                description = edu.get('description', '')  # Optional description/notes
 
-        if user_core_data.get('skills'):
-            prompt_parts.append(f"\n- Skills: {', '.join(user_core_data['skills'])}")
+                edu_line = f"  * {degree}"
+                if field_of_study:
+                    edu_line += f" in {field_of_study}"
+                edu_line += f" from {institution} {edu_dates_str}"
+                if description:
+                    edu_line += f"\n    - Notes: {description}"  # Add notes if available
+                prompt_parts.append(edu_line)
+        else:
+            prompt_parts.append("\n- Education: No education information provided.")
 
+        # --- Skills Section ---
+        # Ensure skills is a list of strings
+        if user_core_data.get('skills') and isinstance(user_core_data['skills'], list):
+            # Filter out any non-string items or empty strings, then join
+            clean_skills = [s for s in user_core_data['skills'] if isinstance(s, str) and s.strip()]
+            if clean_skills:
+                prompt_parts.append(f"\n- Skills: {', '.join(clean_skills)}")
+            else:
+                prompt_parts.append("\n- Skills: No skills provided.")
+        else:
+            prompt_parts.append("\n- Skills: No skills provided.")
 
-        if user_core_data.get('certifications'):
-            prompt_parts.append(f"\n- Certifications: {', '.join(user_core_data['certifications'])}")
+        # --- Certifications Section ---
+        # Ensure certifications is a list of strings
+        if user_core_data.get('certifications') and isinstance(user_core_data['certifications'], list):
+            # Filter out any non-string items or empty strings, then join
+            clean_certs = [c for c in user_core_data['certifications'] if isinstance(c, str) and c.strip()]
+            if clean_certs:
+                prompt_parts.append(f"\n- Certifications: {', '.join(clean_certs)}")
+            else:
+                prompt_parts.append("\n- Certifications: No certifications provided.")
+        else:
+            prompt_parts.append("\n- Certifications: No certifications provided.")
 
-        if user_core_data.get('projects'):
+        # --- Projects Section (if you have one) ---
+        # Ensure projects is a list of dictionaries
+        if user_core_data.get('projects') and isinstance(user_core_data['projects'], list):
             prompt_parts.append("\n- Projects:")
             for proj in user_core_data['projects']:
-                prompt_parts.append(f"  * {proj.get('name', '')}: {proj.get('description', '')}")
-
+                if isinstance(proj, dict):  # Ensure project item is a dictionary
+                    prompt_parts.append(f"  * {proj.get('name', 'N/A')}: {proj.get('description', 'No description.')}")
+                else:
+                    prompt_parts.append(f"  * Invalid project entry: {str(proj)}")  # Handle malformed entry
+        else:
+            prompt_parts.append("\n- Projects: No project information provided.")
 
         # 2. Learned Preferences (Dynamic Agentic Rules)
         # Iterate over the list of rules and add them to the prompt if active
-
-        if learned_preferences:  # Check if the list is not empty
+        if learned_preferences and isinstance(learned_preferences, list):
             prompt_parts.append(
                 "\nBased on previous interactions and feedback, apply the following specific guidelines and preferences:")
             for rule_obj in learned_preferences:
-                if rule_obj.get("active", True):  # Only add active rules
+                if isinstance(rule_obj, dict) and rule_obj.get("active", True):  # Only add active rules
                     rule_text = rule_obj.get("rule")
-                    if rule_text:
+                    if rule_text and isinstance(rule_text, str):
                         prompt_parts.append(f"- {rule_text}")
 
         # 3. Specific Request (from frontend, e.g., target JD)
@@ -97,9 +168,10 @@ class PromptManager:
 
         if target_job_description:
             prompt_parts.append(
-                f"\nTarget Job Description (emphasize relevant skills/experience): {target_job_description}")
+                f"\n**TARGET JOB DESCRIPTION (THIS IS THE MOST IMPORTANT CONTEXT FOR TAILORING):**\n```\n{target_job_description}\n```\n")
+
             prompt_parts.append(
-                "Prioritize content that aligns with the job description's requirements. Look for keywords and concepts.")
+                f"**Your highest priority is to integrate keywords, skills, and responsibilities from this JD throughout the resume. Systematically go through EACH section (Summary, Skills, Experience, Education, Projects) and ensure maximum alignment.** Rephrase and reorder content from the candidate's profile to explicitly match the phrasing and requirements of the job description. Identify and emphasize skills and experiences that directly address the JD's demands, even if they were minor in the original profile. Do not simply list, but actively demonstrate how the candidate meets the JD's criteria.")
 
         prompt_parts.append(
             "\n\nNow, generate the complete resume based on all the above information. Ensure it is formatted clearly with distinct sections (e.g., Summary, Experience, Education, Skills).")
@@ -108,38 +180,65 @@ class PromptManager:
         exclusion_rules = []
         inclusion_rules = []  # For potential future "must include X" rules
 
-        if learned_preferences:
+        if learned_preferences and isinstance(learned_preferences, list):
+            # Ensure proper parsing of learned_preferences here
+            clean_learned_preferences = []
             for rule_obj in learned_preferences:
-                if rule_obj.get("active", True):
+                if isinstance(rule_obj, dict):
                     rule_text = rule_obj.get("rule")
-                    rule_type = rule_obj.get("type", "stylistic")  # Default to stylistic if type not specified
-                    if rule_text:
+                    rule_type = rule_obj.get("type", "stylistic")
+                    if rule_text and isinstance(rule_text, str):
+                        clean_learned_preferences.append(rule_obj)
                         if rule_type == "stylistic":
                             stylistic_rules.append(rule_text)
                         elif rule_type == "exclusion":
                             exclusion_rules.append(rule_text)
                         elif rule_type == "inclusion":
                             inclusion_rules.append(rule_text)
+                elif isinstance(rule_obj, str):  # Handle cases where preferences might just be strings
+                    stylistic_rules.append(rule_obj)
 
-        if stylistic_rules:
-            prompt_parts.append("\n\n**Overall Resume Guidelines (Apply these after generating all sections):**")
-            for rule_text in stylistic_rules:
-                prompt_parts.append(f"- {rule_text}")
+            if clean_learned_preferences:  # Only add if there are actual preferences
+                prompt_parts.append(
+                    "\nBased on previous interactions and feedback, **strictly apply the following specific guidelines and preferences**:"
+                )
+                for rule_text in stylistic_rules:
+                    prompt_parts.append(f"- {rule_text}")
 
-        if exclusion_rules:
+                if exclusion_rules:
+                    prompt_parts.append(
+                        "\nIMPORTANT: **Adhere strictly to the following content exclusion rules.** Do NOT include any information related to these topics or keywords:"
+                    )
+                    for rule_text in exclusion_rules:
+                        prompt_parts.append(f"- {rule_text}")
+
+                if inclusion_rules:
+                    prompt_parts.append(
+                        "\nIMPORTANT: **Ensure the generated resume explicitly highlights the following.** Prioritize content that reflects these areas:"
+                    )
+                    for rule_text in inclusion_rules:
+                        prompt_parts.append(f"- {rule_text}")
+
+        if initial_request:
+            prompt_parts.append(f"\nUser's specific instruction for this generation: {initial_request}")
+
+        if target_job_description:
             prompt_parts.append(
-                "\nIMPORTANT: Adhere strictly to the following content exclusion rules. Do NOT include any information related to these topics or keywords:")
-            for rule_text in exclusion_rules:
-                prompt_parts.append(f"- {rule_text}")
-
-        if inclusion_rules:
+                f"\n**TARGET JOB DESCRIPTION (CRITICAL FOR TAILORING):**\n```\n{target_job_description}\n```\n"
+                f"**Integrate keywords, skills, and responsibilities from this JD throughout the resume, especially in the summary and experience bullet points.** "
+                f"Prioritize and rephrase content that directly aligns with the job description's requirements. Look for specific keywords and concepts to emphasize."
+            )
+        else:
             prompt_parts.append(
-                "\nIMPORTANT: Ensure the generated resume explicitly highlights the following. Prioritize content that reflects these areas:")
-            for rule_text in inclusion_rules:
-                prompt_parts.append(f"- {rule_text}")
+                "\n**No specific Target Job Description provided. Generate a strong general resume.**")
 
-        prompt_parts.append("\n**Generate the complete resume now, strictly adhering to all the instructions, data, and preferences provided.**")
-        prompt_parts.append("Format the resume in a clean, professional, and easy-to-read markdown format.")
+        prompt_parts.append(
+            "\n\n**Generate the COMPLETE resume now, strictly adhering to all the instructions, candidate data, preferences, and the target job description (if provided).**"
+            "\nYour output MUST be in a clean, professional, and easy-to-read Markdown format."
+            "\nDouble-check for conciseness, impact, quantification, and ATS compatibility."
+            "\nEnsure the resume is distinct and unique, avoiding generic phrasing common to AI-generated text."
+        )
+
         return "\n".join(prompt_parts)
 
     def generate_suggestions_prompt(self, user_core_data: Dict[str, Any], learned_preferences: List[Dict[str, Any]],
@@ -250,6 +349,7 @@ class PromptManager:
         )
         return prompt
 
+
     def generate_refinement_prompt(self, previous_resume_content: str, critiques: List[Dict[str, Any]],
                                    user_core_data: Dict[str, Any], learned_preferences: List[Dict[str, Any]],
                                    target_job_description: Optional[str] = None) -> str:
@@ -350,6 +450,54 @@ class PromptManager:
         Extracted JSON:
         """
         return prompt
+
+    def generate_refinement_prompt(self, previous_resume_content: str, critiques: List[Dict[str, Any]],
+                                   user_core_data: Dict[str, Any], learned_preferences: List[Dict[str, Any]],
+                                   target_job_description: str = "") -> str:
+        """
+        Constructs a prompt for Gemini to refine a resume based on previous critiques.
+        """
+        prompt_parts = [
+            "You are an expert resume writer. Your task is to refine the provided resume draft based on the critical feedback and specific issues identified. Your goal is to produce a significantly improved version that directly addresses each critique point while also adhering to all original resume generation guidelines.",
+            "\n**Original Candidate Core Data:**",
+            json.dumps(user_core_data, indent=2),  # Pass core data again for context
+            "\n**Previously Generated Resume Draft (to be refined):**",
+            "```markdown",
+            previous_resume_content,
+            "```",
+            "\n**Critiques to Address (MANDATORY TO FIX EACH):**"
+        ]
+
+        # Convert critiques from Pydantic model_dump to a readable list for LLM
+        for i, critique_item in enumerate(critiques):  # This line is correct
+            prompt_parts.append(
+                f"- Issue {i + 1} (Category: {critique_item.get('category')}, Severity: {critique_item.get('severity')}):")
+            prompt_parts.append(f"  Description: {critique_item.get('description')}")
+            if critique_item.get('suggested_action'):
+                # CORRECTED LINE:
+                prompt_parts.append(
+                    f"  Suggested Action: {critique_item.get('suggested_action')}")  # Changed critrite_item to critique_item
+            if critique_item.get('relevant_rule_id'):
+                prompt_parts.append(f"  Relevant Rule ID: {critique_item.get('relevant_rule_id')}")
+            prompt_parts.append("")  # Empty line for readability
+
+        if learned_preferences:
+            prompt_parts.append("\n**Learned Preferences (Strictly adhere to these during refinement):**")
+            for rule_obj in learned_preferences:
+                if isinstance(rule_obj, dict) and rule_obj.get("active", True) and rule_obj.get("rule"):
+                    prompt_parts.append(f"- {rule_obj['rule']}")
+
+        if target_job_description:
+            prompt_parts.append(
+                f"\n**Target Job Description (Maintain strong relevance):**\n```\n{target_job_description}\n```")
+            prompt_parts.append("Ensure refinement enhances alignment with this job description.")
+
+        prompt_parts.append(
+            "\n\n**Based on the original draft, the identified critiques, and all guidelines/preferences, generate the REFINED resume. Your output must be ONLY the complete, improved resume in Markdown format.** Ensure all critique points have been addressed and the resume is polished, quantified, and tailored."
+        )
+        return "\n".join(prompt_parts)
+
+
 # Example usage (for testing this module directly)
 if __name__ == "__main__":
     pm = PromptManager()

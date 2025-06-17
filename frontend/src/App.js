@@ -26,6 +26,8 @@ import JobHistorySection from './sections/JobHistorySection'; // Import the new 
 import EducationSection from './sections/EducationSection'; // NEW
 import SkillsSection from './sections/SkillsSection';       // NEW
 import CertificationsSection from './sections/CertificationSection';
+import UserProfileCritique from './sections/UserProfileCritique';
+
 // Main App Component (wrapped by Router later)
 function AppContent() {
   const [userProfile, setUserProfile] = useState(null);
@@ -501,8 +503,8 @@ function AppContent() {
                                 ></textarea>
                             </label>
                         </div>
-
-                         
+                
+                      
 
                         {/* Generate Resume Button */}
                         <div className="text-center mb-6">
@@ -510,6 +512,29 @@ function AppContent() {
                                 {loading ? 'Generating...' : 'Generate Resume'}
                             </button>
                         </div>
+
+                         {/* AI's Self-Critique (Re-integrated in its detailed format) */}
+                    {generatedResume && generatedResume.critique && (
+                        <div className="mt-6"> {/* Added margin top for separation from resume display */}
+                            <UserProfileCritique
+                                critique={generatedResume.critique} // Pass the ENTIRE critique object
+                                // onAcceptCritique={handleAcceptCritique} // This can be used for acknowledging or future actions
+                            />
+                        </div>
+                    )}
+                       {generatedResume && (
+                          <div className="mt-6">
+                            <h2 className="text-2xl font-bold text-gray-800 mb-4">6. Provide Feedback</h2>
+                            <textarea
+                              value={feedbackText}
+                              onChange={(e) => setFeedbackText(e.target.value)}
+                              placeholder="e.g., 'Make the summary more concise', 'Use stronger action verbs for experience section'. If related to JD, mention it here."
+                              rows="4"
+                              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
+                            ></textarea>
+                            <button onClick={handleSubmitFeedback} disabled={loading} className="mt-4 bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-2 px-4 rounded transition duration-300 ease-in-out">Submit Feedback</button>
+                          </div>
+                        )}
                     </div>
                 )}
             </div>
