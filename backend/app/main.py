@@ -799,3 +799,5 @@ async def upload_resume(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"An unexpected error occurred during resume upload or processing: {str(e)}"
         )
+
+ # uvicorn app.main:app --reload

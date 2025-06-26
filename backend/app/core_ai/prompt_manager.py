@@ -168,10 +168,17 @@ class PromptManager:
 
         if target_job_description:
             prompt_parts.append(
-                f"\n**TARGET JOB DESCRIPTION (THIS IS THE MOST IMPORTANT CONTEXT FOR TAILORING):**\n```\n{target_job_description}\n```\n")
-
+                f"\n**Target Job Description (CRUCIAL for tailoring):**\n```\n{target_job_description}\n```")
             prompt_parts.append(
-                f"**Your highest priority is to integrate keywords, skills, and responsibilities from this JD throughout the resume. Systematically go through EACH section (Summary, Skills, Experience, Education, Projects) and ensure maximum alignment.** Rephrase and reorder content from the candidate's profile to explicitly match the phrasing and requirements of the job description. Identify and emphasize skills and experiences that directly address the JD's demands, even if they were minor in the original profile. Do not simply list, but actively demonstrate how the candidate meets the JD's criteria.")
+                "**CRITICAL INSTRUCTION: You MUST analyze this job description meticulously.** "
+                "The entire resume, especially the summary, skills, and work experience, "
+                "must be heavily tailored to align with the requirements, keywords, and tone of this JD. "
+                "Prioritize experiences, skills, and achievements from the 'Original Candidate Core Data' that are **most relevant** to this specific role. "
+                "**Conversely, you MUST de-emphasize or completely omit details from the 'Original Candidate Core Data' that are not relevant to this JD.** "
+                "For example, if the core data describes extensive AI/ML experience but the Target Job Description is for a purely Frontend Developer, "
+                "you should minimize or entirely exclude the AI/ML details and instead prominently highlight Frontend development experience. "
+                "The goal is a highly focused resume for *this specific target job*."
+            )
 
         prompt_parts.append(
             "\n\nNow, generate the complete resume based on all the above information. Ensure it is formatted clearly with distinct sections (e.g., Summary, Experience, Education, Skills).")
@@ -237,6 +244,10 @@ class PromptManager:
             "\nYour output MUST be in a clean, professional, and easy-to-read Markdown format."
             "\nDouble-check for conciseness, impact, quantification, and ATS compatibility."
             "\nEnsure the resume is distinct and unique, avoiding generic phrasing common to AI-generated text."
+        )
+        prompt_parts.append(
+            "\n\n**Based on the provided core data, learned preferences, and the critical target job description, generate the complete resume in Markdown format. Your output must be ONLY the resume content.** "
+            "Ensure it is highly relevant, quantified, professional, and directly addresses the target role, selectively emphasizing relevant experiences and de-emphasizing irrelevant ones, as per the CRITICAL INSTRUCTION above."
         )
 
         return "\n".join(prompt_parts)
